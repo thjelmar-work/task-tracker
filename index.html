@@ -585,8 +585,8 @@
       <div class="field">
         <label class="field-label">SQL or ORA?</label>
         <div class="status-row">
-          <button class="status-btn" id="btn-sql" onclick="setSingle('db','sql','SQL')">SQL</button>
-          <button class="status-btn" id="btn-ora" onclick="setSingle('db','ora','ORA')">ORA</button>
+          <button class="status-btn" id="btn-sql" onclick="toggleDb('sql','SQL')">SQL</button>
+          <button class="status-btn" id="btn-ora" onclick="toggleDb('ora','ORA')">ORA</button>
         </div>
       </div>
 
@@ -680,7 +680,7 @@ const MODULE_MAP = {
 let records      = [];
 let selectedStatus = '';
 let selectedEnv    = '';
-let selectedDb     = '';
+let selectedDbs    = [];   // multi-select: 'SQL', 'ORA', or both
 let selectedVers   = [];   // multi-select: '15', '15U', or both
 let sidebarFmt     = 'hm'; // 'hm' | 'dec'
 let editingIndex   = null;
@@ -712,7 +712,7 @@ function saveFormState() {
       notes:          document.getElementById('notes').value,
       selectedStatus,
       selectedEnv,
-      selectedDb,
+      selectedDbs,
       selectedVers,
       timeModes,
       checkedModules
@@ -758,11 +758,11 @@ function restoreFormState() {
       if (envKey) document.getElementById('btn-' + envKey).classList.add('active-completed');
     }
 
-    // DB button
-    if (s.selectedDb) {
-      selectedDb = s.selectedDb;
-      const dbKey = { 'SQL':'sql', 'ORA':'ora' }[s.selectedDb];
-      if (dbKey) document.getElementById('btn-' + dbKey).classList.add('active-completed');
+    // DB buttons (multi-select)
+    if (s.selectedDbs && s.selectedDbs.length) {
+      selectedDbs = s.selectedDbs;
+      if (selectedDbs.includes('SQL')) document.getElementById('btn-sql').classList.add('active-completed');
+      if (selectedDbs.includes('ORA')) document.getElementById('btn-ora').classList.add('active-completed');
     }
 
     // Version buttons (multi-select)
@@ -933,14 +933,25 @@ function updateSidebar() {
 // ── Form state helpers ───────────────────────────────────────────────
 function setSingle(group, key, label) {
   const groupMap = {
-    env: { stateGet: () => selectedEnv, stateSet: v => selectedEnv = v, keys: ['alpha','beta','release'] },
-    db:  { stateGet: () => selectedDb,  stateSet: v => selectedDb  = v, keys: ['sql','ora'] }
+    env: { stateGet: () => selectedEnv, stateSet: v => selectedEnv = v, keys: ['alpha','beta','release'] }
   };
   const g      = groupMap[group];
   const newVal = g.stateGet() === label ? '' : label;
   g.stateSet(newVal);
   g.keys.forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
   if (newVal) document.getElementById('btn-'+key).classList.add('active-completed');
+  saveFormState();
+}
+
+function toggleDb(key, label) {
+  const idx = selectedDbs.indexOf(label);
+  if (idx === -1) {
+    selectedDbs.push(label);
+    document.getElementById('btn-'+key).classList.add('active-completed');
+  } else {
+    selectedDbs.splice(idx, 1);
+    document.getElementById('btn-'+key).classList.remove('active-completed');
+  }
   saveFormState();
 }
 
@@ -1024,7 +1035,7 @@ function submitEntry() {
     'Task Number':          task,
     'Task Description':     document.getElementById('taskDesc').value.trim(),
     'Environment(s)':       selectedEnv || '—',
-    'SQL or ORA':           selectedDb  || '—',
+    'SQL or ORA':           selectedDbs.length ? selectedDbs.join('/') : '—',
     '15 or 15U':            selectedVers.length ? selectedVers.join('/') : '—',
     'Modules Tested':       getCheckedModules() || '—',
     'Time Tested':          document.getElementById('timeInput').value.trim() || '—',
@@ -1061,7 +1072,7 @@ function clearForm() {
   ['alpha','beta','release'].forEach(k =>
     document.getElementById('btn-'+k).className = 'status-btn'
   );
-  selectedDb = '';
+  selectedDbs = [];
   ['sql','ora'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
   selectedVers = [];
   ['15','15u'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
