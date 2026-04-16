@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Task Logger</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f4f1;
+    --surface: #ffffff;
+    --surface2: #f0efe9;
+    --border: rgba(0,0,0,0.12);
+    --border-med: rgba(0,0,0,0.22);
+    --text: #1a1a18;
+    --text-muted: #6b6a65;
+    --text-hint: #9e9d97;
+    --blue-bg: #e6f1fb;
+    --blue-border: #378add;
+    --blue-text: #0c447c;
+    --green-bg: #eaf3de;
+    --green-border: #639922;
+    --green-text: #3b6d11;
+    --red-bg: #fcebeb;
+    --red-border: #e24b4a;
+    --red-text: #a32d2d;
+    --amber-bg: #faeeda;
+    --amber-border: #ba7517;
+    --amber-text: #854f0b;
+    --purple-bg: #eeedfe;
+    --purple-border: #534ab7;
+    --purple-text: #3c3489;
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1a;
+      --surface: #252523;
+      --surface2: #2e2e2b;
+      --border: rgba(255,255,255,0.1);
+      --border-med: rgba(255,255,255,0.2);
+      --text: #f0efe9;
+      --text-muted: #a09f99;
+      --text-hint: #6b6a65;
+      --blue-bg: #0c447c;
+      --blue-border: #378add;
+      --blue-text: #b5d4f4;
+      --green-bg: #27500a;
+      --green-border: #639922;
+      --green-text: #c0dd97;
+      --red-bg: #791f1f;
+      --red-border: #e24b4a;
+      --red-text: #f7c1c1;
+      --amber-bg: #633806;
+      --amber-border: #ba7517;
+      --amber-text: #fac775;
+      --purple-bg: #3c3489;
+      --purple-border: #7f77dd;
+      --purple-text: #cecbf6;
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2rem 1.25rem 3rem;
+  }
+
+  /* ── Two-column layout ── */
+  .layout {
+    display: flex;
+    flex-wrap: nowrap;       /* never wrap — sidebar stays beside form */
+    gap: 1.25rem;
+    align-items: flex-start;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 200px;
+    min-width: 200px;        /* won't shrink below this */
+    flex-shrink: 0;
+    position: sticky;
+    top: 2rem;
+  }
+
+  .sidebar-card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-header {
+    padding: 10px 14px;
+    border-bottom: 0.5px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .sidebar-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  /* h/m · dec format toggle */
+  .fmt-toggle {
+    display: flex;
+    background: var(--surface2);
+    border: 0.5px solid var(--border-med);
+    border-radius: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .fmt-btn {
+    padding: 3px 8px;
+    font-size: 10px;
+    font-weight: 500;
+    font-family: inherit;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    letter-spacing: 0.02em;
+  }
+
+  .fmt-btn:hover { color: var(--text); }
+  .fmt-btn.fmt-active { background: var(--blue-bg); color: var(--blue-text); }
+
+  .sidebar-list {
+    flex: 1;
+    overflow-y: auto;
+    max-height: 420px;
+    padding: 6px 0;
+  }
+
+  .sidebar-empty {
+    padding: 20px 14px;
+    font-size: 12px;
+    color: var(--text-hint);
+    font-style: italic;
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  /* Normal row */
+  .sidebar-entry {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    font-size: 13px;
+    line-height: 1.3;
+  }
+
+  .sidebar-entry:nth-child(even) { background: var(--surface2); }
+
+  .sidebar-entry-task {
+    color: var(--text);
+    font-weight: 500;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+
+  .sidebar-entry-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .sidebar-entry-time {
+    color: var(--text-muted);
+    white-space: nowrap;
+    font-size: 12px;
+  }
+
+  /* Edit pencil — revealed on row hover */
+  .sidebar-edit-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-hint);
+    border-radius: 4px;
+    font-size: 11px;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+    font-family: inherit;
+    flex-shrink: 0;
+  }
+
+  .sidebar-entry:hover .sidebar-edit-btn { opacity: 1; }
+  .sidebar-edit-btn:hover { background: var(--surface2); color: var(--blue-text); }
+
+  /* Editing state — stacks task name above the input row */
+  .sidebar-entry--editing {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 5px;
+    padding: 7px 14px;
+  }
+
+  .sidebar-entry--editing .sidebar-entry-task { flex: unset; }
+
+  .sidebar-edit-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .sidebar-time-input {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 7px;
+    font-size: 12px;
+    border: 0.5px solid var(--blue-border);
+    border-radius: 5px;
+    background: var(--surface2);
+    color: var(--text);
+    font-family: inherit;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(55,138,221,0.15);
+  }
+
+  .sidebar-edit-save,
+  .sidebar-edit-cancel {
+    width: 22px;
+    height: 22px;
+    border: 0.5px solid;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 11px;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0;
+    transition: opacity 0.15s;
+  }
+
+  .sidebar-edit-save   { background: var(--green-bg);  border-color: var(--green-border); color: var(--green-text); }
+  .sidebar-edit-cancel { background: var(--surface2);   border-color: var(--border-med);   color: var(--text-muted); }
+  .sidebar-edit-save:hover,
+  .sidebar-edit-cancel:hover { opacity: 0.72; }
+
+  .sidebar-footer {
+    border-top: 0.5px solid var(--border-med);
+    padding: 10px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .sidebar-footer-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .sidebar-footer-total {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--blue-text);
+  }
+
+  /* Restored-session badge */
+  .restored-badge {
+    display: none;
+    font-size: 10px;
+    background: var(--amber-bg);
+    border: 0.5px solid var(--amber-border);
+    color: var(--amber-text);
+    border-radius: 5px;
+    padding: 2px 7px;
+    margin: 6px 14px 2px;
+    text-align: center;
+  }
+
+  .restored-badge.show { display: block; }
+
+  /* ── Main form ── */
+  .main { flex: 1; min-width: 0; }
+
+  header { margin-bottom: 1.75rem; }
+
+  header h1 {
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  header p { font-size: 14px; color: var(--text-muted); }
+
+  .card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .field { margin-bottom: 1.25rem; }
+  .field:last-child { margin-bottom: 0; }
+
+  .field-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  input[type=text], textarea {
+    width: 100%;
+    padding: 9px 12px;
+    font-size: 15px;
+    border: 0.5px solid var(--border-med);
+    border-radius: var(--radius);
+    background: var(--surface2);
+    color: var(--text);
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  input[type=text]:focus, textarea:focus {
+    outline: none;
+    border-color: var(--blue-border);
+    box-shadow: 0 0 0 3px rgba(55,138,221,0.15);
+  }
+
+  textarea { resize: vertical; min-height: 76px; line-height: 1.5; }
+
+  .time-row { display: flex; gap: 8px; align-items: center; }
+  .time-row input { flex: 1; }
+
+  .time-toggle {
+    font-size: 12px;
+    padding: 7px 12px;
+    background: var(--surface2);
+    border: 0.5px solid var(--border-med);
+    border-radius: var(--radius);
+    cursor: pointer;
+    color: var(--text-muted);
+    white-space: nowrap;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  .time-toggle:hover { background: var(--bg); }
+
+  .checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 36px;
+    align-items: center;
+  }
+
+  .cb-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 13px;
+    border: 0.5px solid var(--border-med);
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-muted);
+    background: var(--surface2);
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .cb-pill:hover { border-color: var(--blue-border); color: var(--text); }
+  .cb-pill.checked {
+    background: var(--blue-bg);
+    border-color: var(--blue-border);
+    color: var(--blue-text);
+  }
+  .cb-pill input { display: none; }
+
+  .no-modules { font-size: 13px; color: var(--text-hint); font-style: italic; }
+
+  .status-row { display: flex; gap: 8px; }
+
+  .status-btn {
+    flex: 1;
+    padding: 9px 8px;
+    font-size: 14px;
+    border: 0.5px solid var(--border-med);
+    border-radius: var(--radius);
+    cursor: pointer;
+    background: var(--surface2);
+    color: var(--text-muted);
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .status-btn:hover { border-color: var(--border-med); color: var(--text); }
+  .status-btn.active-completed { background: var(--green-bg); border-color: var(--green-border); color: var(--green-text); }
+  .status-btn.active-sentback  { background: var(--red-bg);   border-color: var(--red-border);   color: var(--red-text);   }
+  .status-btn.active-paused    { background: var(--amber-bg); border-color: var(--amber-border); color: var(--amber-text); }
+
+  .divider { border: none; border-top: 0.5px solid var(--border); margin: 1.25rem 0; }
+
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .btn {
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity 0.15s, transform 0.1s;
+    border: 0.5px solid transparent;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn:hover  { opacity: 0.88; }
+
+  .btn-save    { flex: 2; background: var(--blue-bg);   border-color: var(--blue-border);   color: var(--blue-text);   }
+  .btn-midday  { flex: 2; background: var(--purple-bg); border-color: var(--purple-border); color: var(--purple-text); }
+  .btn-export  { flex: 2; background: var(--green-bg);  border-color: var(--green-border);  color: var(--green-text);  }
+  .btn-reset   { flex: 1; background: var(--surface2);  border-color: var(--border-med);    color: var(--text-muted);  }
+  .btn-reset:hover { border-color: var(--red-border); color: var(--red-text); }
+
+  .record-count {
+    font-size: 12px;
+    color: var(--text-hint);
+    text-align: right;
+    margin-top: 10px;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%) translateY(8px);
+    background: var(--surface);
+    border: 0.5px solid var(--border-med);
+    border-radius: var(--radius);
+    padding: 10px 20px;
+    font-size: 13px;
+    color: var(--text);
+    opacity: 0;
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+    z-index: 200;
+    white-space: nowrap;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Confirm modal */
+  .overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .overlay.active { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    border: 0.5px solid var(--border-med);
+    padding: 1.75rem 1.5rem;
+    max-width: 320px;
+    width: 90%;
+    text-align: center;
+  }
+  .modal h2 { font-size: 17px; font-weight: 500; margin-bottom: 8px; }
+  .modal p  { font-size: 13px; color: var(--text-muted); margin-bottom: 1.5rem; line-height: 1.5; }
+  .modal-btns { display: flex; gap: 8px; }
+  .modal-yes {
+    flex: 1; padding: 9px; background: var(--red-bg); border: 0.5px solid var(--red-border);
+    color: var(--red-text); border-radius: var(--radius); cursor: pointer; font-size: 14px; font-family: inherit;
+  }
+  .modal-no {
+    flex: 1; padding: 9px; background: var(--surface2); border: 0.5px solid var(--border-med);
+    color: var(--text-muted); border-radius: var(--radius); cursor: pointer; font-size: 14px; font-family: inherit;
+  }
+
+  /* Responsive — keep sidebar beside form down to ~560px,
+     only stack vertically on very small screens */
+  @media (max-width: 560px) {
+    .layout { flex-direction: column; }
+    .sidebar { width: 100%; position: static; order: 2; }
+    .main    { order: 1; }
+    .sidebar-list { max-height: 180px; }
+  }
+
+  @media (max-width: 680px) {
+    .btn-row { flex-direction: column; }
+    .btn { flex: unset !important; width: 100%; }
+    .status-row { flex-direction: column; }
+    .status-btn { flex: unset; }
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-card">
+      <div class="sidebar-header">
+        <div class="sidebar-title">Today's Log</div>
+        <div class="fmt-toggle">
+          <button class="fmt-btn fmt-active" id="fmtHm"  onclick="setSidebarFmt('hm')">h/m</button>
+          <button class="fmt-btn"            id="fmtDec" onclick="setSidebarFmt('dec')">dec</button>
+        </div>
+      </div>
+      <div class="restored-badge" id="restoredBadge">Restored from last session</div>
+      <div class="sidebar-list" id="sidebarList">
+        <div class="sidebar-empty">No entries yet.<br>Save a task to see it here.</div>
+      </div>
+      <div class="sidebar-footer">
+        <span class="sidebar-footer-label">Total</span>
+        <span class="sidebar-footer-total" id="sidebarTotal">—</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main form ── -->
+  <div class="main">
+    <header>
+      <h1>Task Logger</h1>
+      <p>Log test tasks and export to Excel at the end of the day.</p>
+    </header>
+
+    <div class="card">
+      <div class="field">
+        <label class="field-label" for="taskNum">Task number</label>
+        <input type="text" id="taskNum" placeholder="e.g. PRE-001, DYN-045, TT-12..." oninput="updateModules()">
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="taskDesc">Task description</label>
+        <textarea id="taskDesc" placeholder="Briefly describe the task..."></textarea>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Environment(s) tested in</label>
+        <div class="status-row">
+          <button class="status-btn" id="btn-alpha"   onclick="setSingle('env','alpha',  'Alpha')">Alpha</button>
+          <button class="status-btn" id="btn-beta"    onclick="setSingle('env','beta',   'Beta')">Beta</button>
+          <button class="status-btn" id="btn-release" onclick="setSingle('env','release','Release')">Release</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">SQL or ORA?</label>
+        <div class="status-row">
+          <button class="status-btn" id="btn-sql" onclick="setSingle('db','sql','SQL')">SQL</button>
+          <button class="status-btn" id="btn-ora" onclick="setSingle('db','ora','ORA')">ORA</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">15 or 15U?</label>
+        <div class="status-row">
+          <button class="status-btn" id="btn-15"  onclick="toggleVer('15', '15')">15</button>
+          <button class="status-btn" id="btn-15u" onclick="toggleVer('15u','15U')">15U</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Modules tested</label>
+        <div class="checkboxes" id="moduleArea">
+          <span class="no-modules">Enter a task number to see available modules</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Status</label>
+        <div class="status-row">
+          <button class="status-btn" id="btn-completed" onclick="setStatus('Completed')">Completed</button>
+          <button class="status-btn" id="btn-sentback"  onclick="setStatus('Sent Back')">Sent Back</button>
+          <button class="status-btn" id="btn-paused"    onclick="setStatus('Paused')">Paused</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="timeInput">Time tested</label>
+        <div class="time-row">
+          <input type="text" id="timeInput" placeholder="e.g. 1h 30m">
+          <button class="time-toggle" onclick="toggleTimeMode('tested')" id="timeModeBtn">Switch to decimal (hrs)</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="timeRemaining">Remaining testing time (est)</label>
+        <div class="time-row">
+          <input type="text" id="timeRemaining" placeholder="e.g. 0h 45m">
+          <button class="time-toggle" onclick="toggleTimeMode('remaining')" id="timeRemModeBtn">Switch to decimal (hrs)</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="notes">Additional notes</label>
+        <textarea id="notes" placeholder="Any additional context..."></textarea>
+      </div>
+
+      <hr class="divider">
+
+      <div class="btn-row">
+        <button class="btn btn-save"   onclick="submitEntry()">Save &amp; Add Another</button>
+        <button class="btn btn-midday" onclick="midDayDownload()">Mid-Day Download</button>
+        <button class="btn btn-export" onclick="exportExcel()">Wrap Up the Day / Download Excel</button>
+        <button class="btn btn-reset"  onclick="confirmReset()">Reset all</button>
+      </div>
+      <div class="record-count" id="recCount"></div>
+    </div>
+  </div>
+
+</div><!-- /.layout -->
+
+<!-- Confirm modal -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2>Reset all data?</h2>
+    <p>This will clear all saved records and cannot be undone.</p>
+    <div class="modal-btns">
+      <button class="modal-yes" onclick="doReset()">Yes, reset</button>
+      <button class="modal-no"  onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+// ── Module map ───────────────────────────────────────────────────────
+const MODULE_MAP = {
+  pre:  ['PD/PT'],
+  post: ['PD/PT'],
+  comp: ['HS','LA','EHS'],
+  dyn:  ['QAE','QAS','EM','PAM','RO'],
+  coi:  ['COI'],
+  tt:   ['TTA','TTC','TTD','TTK','TTF','TTO'],
+  ent:  ['PD/PT','HS','LA','EHS','QAE','QAS','EM','PAM','RO','COI','TTA','TTC','TTD','TTK','TTF','TTO']
+};
+
+// ── App state ────────────────────────────────────────────────────────
+let records      = [];
+let selectedStatus = '';
+let selectedEnv    = '';
+let selectedDb     = '';
+let selectedVers   = [];   // multi-select: '15', '15U', or both
+let sidebarFmt     = 'hm'; // 'hm' | 'dec'
+let editingIndex   = null;
+
+// ── localStorage persistence ─────────────────────────────────────────
+const STORE_KEY = 'taskLogger_records_v1';
+const FMT_KEY   = 'taskLogger_sidebarFmt';
+const FORM_KEY  = 'taskLogger_formState_v1';
+
+// Records
+function saveToStorage() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(records)); } catch(_) {}
+}
+
+function clearStorage() {
+  try { localStorage.removeItem(STORE_KEY); } catch(_) {}
+}
+
+// In-progress form state
+function saveFormState() {
+  try {
+    const checkedModules = [...document.querySelectorAll('#moduleArea .cb-pill input:checked')]
+      .map(c => c.value);
+    const state = {
+      taskNum:        document.getElementById('taskNum').value,
+      taskDesc:       document.getElementById('taskDesc').value,
+      timeInput:      document.getElementById('timeInput').value,
+      timeRemaining:  document.getElementById('timeRemaining').value,
+      notes:          document.getElementById('notes').value,
+      selectedStatus,
+      selectedEnv,
+      selectedDb,
+      selectedVers,
+      timeModes,
+      checkedModules
+    };
+    localStorage.setItem(FORM_KEY, JSON.stringify(state));
+  } catch(_) {}
+}
+
+function clearFormStorage() {
+  try { localStorage.removeItem(FORM_KEY); } catch(_) {}
+}
+
+function restoreFormState() {
+  try {
+    const raw = localStorage.getItem(FORM_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+
+    // Text fields
+    if (s.taskNum)       document.getElementById('taskNum').value       = s.taskNum;
+    if (s.taskDesc)      document.getElementById('taskDesc').value      = s.taskDesc;
+    if (s.timeInput)     document.getElementById('timeInput').value     = s.timeInput;
+    if (s.timeRemaining) document.getElementById('timeRemaining').value = s.timeRemaining;
+    if (s.notes)         document.getElementById('notes').value         = s.notes;
+
+    // Time mode toggles
+    if (s.timeModes) {
+      timeModes = s.timeModes;
+      if (timeModes.tested === 'dec') {
+        document.getElementById('timeInput').placeholder   = 'e.g. 1.50';
+        document.getElementById('timeModeBtn').textContent = 'Switch to h/m';
+      }
+      if (timeModes.remaining === 'dec') {
+        document.getElementById('timeRemaining').placeholder  = 'e.g. 0.75';
+        document.getElementById('timeRemModeBtn').textContent = 'Switch to h/m';
+      }
+    }
+
+    // Environment button
+    if (s.selectedEnv) {
+      selectedEnv = s.selectedEnv;
+      const envKey = { 'Alpha':'alpha', 'Beta':'beta', 'Release':'release' }[s.selectedEnv];
+      if (envKey) document.getElementById('btn-' + envKey).classList.add('active-completed');
+    }
+
+    // DB button
+    if (s.selectedDb) {
+      selectedDb = s.selectedDb;
+      const dbKey = { 'SQL':'sql', 'ORA':'ora' }[s.selectedDb];
+      if (dbKey) document.getElementById('btn-' + dbKey).classList.add('active-completed');
+    }
+
+    // Version buttons (multi-select)
+    if (s.selectedVers && s.selectedVers.length) {
+      selectedVers = s.selectedVers;
+      if (selectedVers.includes('15'))  document.getElementById('btn-15').classList.add('active-completed');
+      if (selectedVers.includes('15U')) document.getElementById('btn-15u').classList.add('active-completed');
+    }
+
+    // Status button
+    if (s.selectedStatus) setStatus(s.selectedStatus);
+
+    // Module pills — render first, then tick saved checkboxes
+    if (s.taskNum) {
+      updateModules();
+      if (s.checkedModules && s.checkedModules.length) {
+        s.checkedModules.forEach(val => {
+          const input = document.querySelector(`#moduleArea .cb-pill input[value="${val}"]`);
+          if (input) {
+            input.checked = true;
+            input.closest('.cb-pill').classList.add('checked');
+          }
+        });
+      }
+    }
+  } catch(_) {}
+}
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length) {
+      records = parsed;
+      updateCount();
+      updateSidebar();
+      document.getElementById('restoredBadge').classList.add('show');
+      setTimeout(() => document.getElementById('restoredBadge').classList.remove('show'), 4000);
+    }
+  } catch(_) {}
+
+  // Restore format preference
+  try {
+    const fmt = localStorage.getItem(FMT_KEY);
+    if (fmt === 'dec') setSidebarFmt('dec');
+  } catch(_) {}
+
+  // Restore in-progress form
+  restoreFormState();
+}
+
+// ── Time helpers ─────────────────────────────────────────────────────
+// Parse any time string → decimal hours
+function parseTimeToHours(str) {
+  if (!str || str === '—') return 0;
+  const s = str.trim();
+  const hmMatch = s.match(/^(?:(\d+(?:\.\d+)?)\s*h)?\s*(?:(\d+(?:\.\d+)?)\s*m)?$/i);
+  if (hmMatch && (hmMatch[1] || hmMatch[2])) {
+    return parseFloat(hmMatch[1] || 0) + parseFloat(hmMatch[2] || 0) / 60;
+  }
+  const dec = parseFloat(s);
+  return isNaN(dec) ? 0 : dec;
+}
+
+// Decimal hours → "Xh Ym"
+function formatHM(h) {
+  if (h <= 0) return '0h 0m';
+  const hrs  = Math.floor(h);
+  const mins = Math.round((h - hrs) * 60);
+  if (hrs === 0)  return `${mins}m`;
+  if (mins === 0) return `${hrs}h`;
+  return `${hrs}h ${mins}m`;
+}
+
+// Decimal hours → "1.50"
+function formatDec(h) { return h.toFixed(2); }
+
+function formatForSidebar(h) {
+  return sidebarFmt === 'dec' ? formatDec(h) : formatHM(h);
+}
+
+// ── Sidebar format toggle ────────────────────────────────────────────
+function setSidebarFmt(fmt) {
+  sidebarFmt = fmt;
+  document.getElementById('fmtHm').classList.toggle('fmt-active',  fmt === 'hm');
+  document.getElementById('fmtDec').classList.toggle('fmt-active', fmt === 'dec');
+  try { localStorage.setItem(FMT_KEY, fmt); } catch(_) {}
+  updateSidebar();
+}
+
+// ── Inline time editing ──────────────────────────────────────────────
+function startEdit(idx) {
+  editingIndex = idx;
+  updateSidebar();
+  setTimeout(() => {
+    const input = document.getElementById('sidebarEditInput');
+    if (input) { input.focus(); input.select(); }
+  }, 0);
+}
+
+function cancelEdit() {
+  editingIndex = null;
+  updateSidebar();
+}
+
+function saveEdit(idx) {
+  const input = document.getElementById('sidebarEditInput');
+  if (!input) return;
+  const newVal = input.value.trim();
+  records[idx]['Time Tested'] = newVal || '—';
+  editingIndex = null;
+  saveToStorage();
+  updateSidebar();
+}
+
+function handleEditKey(e, idx) {
+  if (e.key === 'Enter')  saveEdit(idx);
+  if (e.key === 'Escape') cancelEdit();
+}
+
+// ── Sidebar render ───────────────────────────────────────────────────
+function updateSidebar() {
+  const list  = document.getElementById('sidebarList');
+  const total = document.getElementById('sidebarTotal');
+
+  if (!records.length) {
+    list.innerHTML = '<div class="sidebar-empty">No entries yet.<br>Save a task to see it here.</div>';
+    total.textContent = '—';
+    return;
+  }
+
+  let totalHours = 0;
+
+  list.innerHTML = records.map((r, i) => {
+    const hrs = parseTimeToHours(r['Time Tested']);
+    totalHours += hrs;
+    const timeLabel = hrs > 0 ? formatForSidebar(hrs) : '—';
+    const rawVal    = (r['Time Tested'] && r['Time Tested'] !== '—') ? r['Time Tested'] : '';
+
+    if (i === editingIndex) {
+      return `<div class="sidebar-entry sidebar-entry--editing">
+        <span class="sidebar-entry-task" title="${r['Task Number']}">${r['Task Number']}</span>
+        <div class="sidebar-edit-row">
+          <input class="sidebar-time-input" id="sidebarEditInput"
+                 value="${rawVal}" placeholder="e.g. 1h 30m"
+                 onkeydown="handleEditKey(event,${i})">
+          <button class="sidebar-edit-save"   onclick="saveEdit(${i})"  title="Save">✓</button>
+          <button class="sidebar-edit-cancel" onclick="cancelEdit()"    title="Cancel">✕</button>
+        </div>
+      </div>`;
+    }
+
+    return `<div class="sidebar-entry">
+      <span class="sidebar-entry-task" title="${r['Task Number']}">${r['Task Number']}</span>
+      <div class="sidebar-entry-right">
+        <span class="sidebar-entry-time">${timeLabel}</span>
+        <button class="sidebar-edit-btn" onclick="startEdit(${i})" title="Edit time">✏</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  total.textContent = formatForSidebar(totalHours);
+
+  if (editingIndex === null) list.scrollTop = list.scrollHeight;
+}
+
+// ── Form state helpers ───────────────────────────────────────────────
+function setSingle(group, key, label) {
+  const groupMap = {
+    env: { stateGet: () => selectedEnv, stateSet: v => selectedEnv = v, keys: ['alpha','beta','release'] },
+    db:  { stateGet: () => selectedDb,  stateSet: v => selectedDb  = v, keys: ['sql','ora'] }
+  };
+  const g      = groupMap[group];
+  const newVal = g.stateGet() === label ? '' : label;
+  g.stateSet(newVal);
+  g.keys.forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
+  if (newVal) document.getElementById('btn-'+key).classList.add('active-completed');
+  saveFormState();
+}
+
+function toggleVer(key, label) {
+  const idx = selectedVers.indexOf(label);
+  if (idx === -1) {
+    selectedVers.push(label);
+    document.getElementById('btn-'+key).classList.add('active-completed');
+  } else {
+    selectedVers.splice(idx, 1);
+    document.getElementById('btn-'+key).classList.remove('active-completed');
+  }
+  saveFormState();
+}
+
+function getPrefix(val) {
+  const part = val.trim().toLowerCase().split('-')[0];
+  return Object.prototype.hasOwnProperty.call(MODULE_MAP, part) ? part : null;
+}
+
+function updateModules() {
+  const prefix = getPrefix(document.getElementById('taskNum').value);
+  const area   = document.getElementById('moduleArea');
+  if (!prefix) {
+    area.innerHTML = '<span class="no-modules">Enter a task number to see available modules</span>';
+    saveFormState();
+    return;
+  }
+  area.innerHTML = MODULE_MAP[prefix].map(m =>
+    `<label class="cb-pill" onclick="togglePill(this)"><input type="checkbox" value="${m}"> ${m}</label>`
+  ).join('');
+  saveFormState();
+}
+
+function togglePill(el) {
+  const cb = el.querySelector('input');
+  cb.checked = !cb.checked;
+  el.classList.toggle('checked', cb.checked);
+  saveFormState();
+}
+
+function setStatus(s) {
+  selectedStatus = s;
+  ['completed','sentback','paused'].forEach(k =>
+    document.getElementById('btn-'+k).className = 'status-btn'
+  );
+  const map = { 'Completed':'completed', 'Sent Back':'sentback', 'Paused':'paused' };
+  document.getElementById('btn-'+map[s]).classList.add('active-'+map[s]);
+  saveFormState();
+}
+
+let timeModes = { tested: 'hm', remaining: 'hm' };
+
+function toggleTimeMode(field) {
+  timeModes[field] = timeModes[field] === 'hm' ? 'dec' : 'hm';
+  const isDec = timeModes[field] === 'dec';
+  if (field === 'tested') {
+    document.getElementById('timeInput').placeholder   = isDec ? 'e.g. 1.50'   : 'e.g. 1h 30m';
+    document.getElementById('timeModeBtn').textContent = isDec ? 'Switch to h/m' : 'Switch to decimal (hrs)';
+    document.getElementById('timeInput').value = '';
+  } else {
+    document.getElementById('timeRemaining').placeholder   = isDec ? 'e.g. 0.75'   : 'e.g. 0h 45m';
+    document.getElementById('timeRemModeBtn').textContent  = isDec ? 'Switch to h/m' : 'Switch to decimal (hrs)';
+    document.getElementById('timeRemaining').value = '';
+  }
+  saveFormState();
+}
+
+function getCheckedModules() {
+  return [...document.querySelectorAll('#moduleArea .cb-pill input:checked')]
+    .map(c => c.value).join(', ');
+}
+
+// ── Record management ────────────────────────────────────────────────
+function submitEntry() {
+  const task = document.getElementById('taskNum').value.trim();
+  if (!task)           { showToast('Please enter a task number.'); return; }
+  if (!selectedStatus) { showToast('Please select a status.');     return; }
+
+  records.push({
+    'Task Number':          task,
+    'Task Description':     document.getElementById('taskDesc').value.trim(),
+    'Environment(s)':       selectedEnv || '—',
+    'SQL or ORA':           selectedDb  || '—',
+    '15 or 15U':            selectedVers.length ? selectedVers.join('/') : '—',
+    'Modules Tested':       getCheckedModules() || '—',
+    'Time Tested':          document.getElementById('timeInput').value.trim() || '—',
+    'Remaining Time (est)': document.getElementById('timeRemaining').value.trim() || '—',
+    'Status':               selectedStatus,
+    'Notes':                document.getElementById('notes').value.trim()
+  });
+
+  saveToStorage();
+  clearForm();
+  updateCount();
+  updateSidebar();
+  showToast('Entry saved! Ready for next entry.');
+}
+
+function clearForm() {
+  document.getElementById('taskNum').value       = '';
+  document.getElementById('taskDesc').value      = '';
+  document.getElementById('timeInput').value     = '';
+  document.getElementById('timeRemaining').value = '';
+  document.getElementById('notes').value         = '';
+  timeModes = { tested: 'hm', remaining: 'hm' };
+  document.getElementById('timeModeBtn').textContent    = 'Switch to decimal (hrs)';
+  document.getElementById('timeRemModeBtn').textContent = 'Switch to decimal (hrs)';
+  document.getElementById('timeInput').placeholder      = 'e.g. 1h 30m';
+  document.getElementById('timeRemaining').placeholder  = 'e.g. 0h 45m';
+  document.getElementById('moduleArea').innerHTML =
+    '<span class="no-modules">Enter a task number to see available modules</span>';
+  selectedStatus = '';
+  ['completed','sentback','paused'].forEach(k =>
+    document.getElementById('btn-'+k).className = 'status-btn'
+  );
+  selectedEnv = '';
+  ['alpha','beta','release'].forEach(k =>
+    document.getElementById('btn-'+k).className = 'status-btn'
+  );
+  selectedDb = '';
+  ['sql','ora'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
+  selectedVers = [];
+  ['15','15u'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
+  clearFormStorage();
+}
+
+// ── Excel export ─────────────────────────────────────────────────────
+function buildSheet(data) {
+  const cols  = ['Task Number','Task Description','Environment(s)','SQL or ORA','15 or 15U',
+                 'Modules Tested','Status','Time Tested','Remaining Time (est)','Notes'];
+  const today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+
+  const wsData = [
+    ['Daily Task Log — ' + today],
+    [],
+    cols,
+    ...data.map(r => cols.map(c => r[c] || ''))
+  ];
+
+  const ws       = XLSX.utils.aoa_to_sheet(wsData);
+  const colCount = cols.length;
+
+  ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:colCount-1} }];
+
+  const titleStyle = {
+    font:      { name:'Arial', sz:14, bold:true, color:{rgb:'1A3A5C'} },
+    fill:      { fgColor:{rgb:'D9E8F5'} },
+    alignment: { horizontal:'left', vertical:'center' }
+  };
+  const headerStyle = {
+    font:      { name:'Arial', sz:11, bold:true, color:{rgb:'FFFFFF'} },
+    fill:      { fgColor:{rgb:'2E5FA3'} },
+    alignment: { horizontal:'center', vertical:'center', wrapText:true },
+    border:    { bottom:{ style:'medium', color:{rgb:'1A3A5C'} } }
+  };
+  const cellStyle = { font:{ name:'Arial', sz:11 }, alignment:{ vertical:'center', wrapText:true } };
+  const altStyle  = { font:{ name:'Arial', sz:11 }, fill:{ fgColor:{rgb:'EEF4FB'} }, alignment:{ vertical:'center', wrapText:true } };
+
+  const enc = (r, c) => XLSX.utils.encode_cell({r, c});
+
+  ws[enc(0,0)].s = titleStyle;
+  for (let c = 0; c < colCount; c++) { const ref = enc(2,c); if (ws[ref]) ws[ref].s = headerStyle; }
+  for (let r = 0; r < data.length; r++) {
+    const style = r % 2 === 0 ? cellStyle : altStyle;
+    for (let c = 0; c < colCount; c++) { const ref = enc(r+3,c); if (ws[ref]) ws[ref].s = style; }
+  }
+
+  ws['!cols'] = cols.map(c => {
+    const dataMax = data.reduce((m, r) => Math.max(m, String(r[c]||'').length), 0);
+    return { wch: Math.max(c.length, dataMax) + 4 };
+  });
+  ws['!rows'] = [{ hpt:28 }, { hpt:6 }, { hpt:22 }];
+
+  return ws;
+}
+
+function midDayDownload() {
+  if (!records.length) { showToast('No records to export yet.'); return; }
+  const ws = buildSheet(records);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Task Log');
+  const now   = new Date();
+  const stamp = now.toISOString().slice(0,10) + '_' +
+    String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0');
+  XLSX.writeFile(wb, `task-log-midday-${stamp}.xlsx`, { bookSST:false, cellStyles:true });
+  showToast('Mid-day snapshot downloaded — data retained.');
+}
+
+function exportExcel() {
+  if (!records.length) { showToast('No records to export yet.'); return; }
+  const ws   = buildSheet(records);
+  const wb   = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Task Log');
+  const date = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `task-log-${date}.xlsx`, { bookSST:false, cellStyles:true });
+  records = [];
+  clearStorage();
+  clearForm();
+  updateCount();
+  updateSidebar();
+  showToast('Excel downloaded! Log cleared for a new day.');
+}
+
+function updateCount() {
+  const el = document.getElementById('recCount');
+  el.textContent = records.length
+    ? `${records.length} record${records.length > 1 ? 's' : ''} saved`
+    : '';
+}
+
+function confirmReset() { document.getElementById('overlay').classList.add('active'); }
+function closeModal()    { document.getElementById('overlay').classList.remove('active'); }
+
+function doReset() {
+  records = [];
+  clearStorage();
+  clearForm();
+  updateCount();
+  updateSidebar();
+  closeModal();
+  showToast('All data cleared.');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// ── Init ─────────────────────────────────────────────────────────────
+loadFromStorage();
+
+// Save form state on every keystroke in text fields / textareas
+['taskNum','taskDesc','timeInput','timeRemaining','notes'].forEach(id => {
+  document.getElementById(id).addEventListener('input', saveFormState);
+});
+</script>
+</body>
+</html>
