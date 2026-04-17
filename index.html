@@ -284,6 +284,46 @@
     transition: opacity 0.15s;
   }
 
+  .sidebar-edit-yn-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 3px;
+  }
+
+  .sidebar-edit-yn {
+    flex: 1;
+    padding: 4px 0;
+    font-size: 11px;
+    font-family: inherit;
+    border: 0.5px solid var(--border-med);
+    border-radius: 5px;
+    background: var(--surface2);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .sidebar-edit-yn.yn-active {
+    background: var(--blue-bg);
+    border-color: var(--blue-border);
+    color: var(--blue-text);
+    font-weight: 600;
+  }
+
+  .sidebar-edit-status-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+  }
+
+  .sidebar-edit-status-row .status-btn {
+    flex: 1;
+    font-size: 11px;
+    padding: 4px 6px;
+    min-width: 0;
+  }
+
   .sidebar-edit-save   { background: var(--green-bg);  border-color: var(--green-border); color: var(--green-text); }
   .sidebar-edit-cancel { background: var(--surface2);   border-color: var(--border-med);   color: var(--text-muted); }
   .sidebar-edit-save:hover,
@@ -703,7 +743,9 @@ let selectedEnv    = '';
 let selectedDbs    = [];   // multi-select: 'SQL', 'ORA', or both
 let selectedVers   = [];   // multi-select: '15', '15U', or both
 let sidebarFmt     = 'hm'; // 'hm' | 'dec'
-let editingIndex   = null;
+let editingIndex       = null;
+let editingShowStatus  = false;  // whether Yes was clicked on status question
+let editingNewStatus   = '';     // newly selected status (empty = keep original)
 
 // ── localStorage persistence ─────────────────────────────────────────
 const STORE_KEY = 'taskLogger_records_v1';
@@ -876,7 +918,9 @@ function setSidebarFmt(fmt) {
 
 // ── Inline time editing ──────────────────────────────────────────────
 function startEdit(idx) {
-  editingIndex = idx;
+  editingIndex      = idx;
+  editingShowStatus = false;
+  editingNewStatus  = '';
   updateSidebar();
   setTimeout(() => {
     const input = document.getElementById('sidebarEditInput');
@@ -885,7 +929,20 @@ function startEdit(idx) {
 }
 
 function cancelEdit() {
-  editingIndex = null;
+  editingIndex      = null;
+  editingShowStatus = false;
+  editingNewStatus  = '';
+  updateSidebar();
+}
+
+function toggleEditStatus(show) {
+  editingShowStatus = show;
+  if (!show) editingNewStatus = '';
+  updateSidebar();
+}
+
+function selectEditStatus(status) {
+  editingNewStatus = status;
   updateSidebar();
 }
 
@@ -897,7 +954,10 @@ function saveEdit(idx) {
   const newNotes = notesEl ? notesEl.value.trim() : records[idx]['Notes'];
   records[idx]['Time Tested'] = newTime || '—';
   records[idx]['Notes']       = newNotes;
-  editingIndex = null;
+  if (editingNewStatus) records[idx]['Status'] = editingNewStatus;
+  editingIndex      = null;
+  editingShowStatus = false;
+  editingNewStatus  = '';
   saveToStorage();
   updateSidebar();
 }
@@ -928,6 +988,16 @@ function updateSidebar() {
 
     if (i === editingIndex) {
       const escapedNotes = (r['Notes'] || '').replace(/"/g, '&quot;').replace(/`/g, '&#96;');
+      const currentStatus = r['Status'] || '—';
+      const statusClassMap = { 'Completed':'active-completed', 'Sent Back':'active-sentback', 'Paused':'active-paused' };
+      const statusPicker = editingShowStatus ? `
+        <div class="sidebar-edit-status-row">
+          ${['Completed','Sent Back','Paused'].map(s => {
+            const cls = statusClassMap[s] || '';
+            const active = editingNewStatus === s ? cls : '';
+            return `<button class="status-btn ${active}" onclick="selectEditStatus('${s}')">${s}</button>`;
+          }).join('')}
+        </div>` : '';
       return `<div class="sidebar-entry sidebar-entry--editing">
         <span class="sidebar-entry-task" title="${r['Task Number']}">${r['Task Number']}</span>
         <div class="sidebar-edit-label">Time Tested</div>
@@ -941,6 +1011,14 @@ function updateSidebar() {
         <div class="sidebar-edit-label">Notes</div>
         <textarea class="sidebar-notes-input" id="sidebarEditNotes"
                   rows="3" placeholder="Additional notes...">${escapedNotes}</textarea>
+        <div class="sidebar-edit-label" style="margin-top:6px;">Do you need to update the status?<br>
+          <span style="font-style:italic;">It's currently labeled as <strong>${currentStatus}</strong></span>
+        </div>
+        <div class="sidebar-edit-yn-row">
+          <button class="sidebar-edit-yn ${editingShowStatus  ? 'yn-active' : ''}" onclick="toggleEditStatus(true)">Yes</button>
+          <button class="sidebar-edit-yn ${!editingShowStatus ? 'yn-active' : ''}" onclick="toggleEditStatus(false)">No</button>
+        </div>
+        ${statusPicker}
       </div>`;
     }
 
