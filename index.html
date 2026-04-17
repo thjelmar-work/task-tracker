@@ -1087,7 +1087,6 @@ function buildSheet(data) {
 
   const wsData = [
     ['Daily Task Log — ' + today],
-    [],
     cols,
     ...data.map(r => cols.map(c => r[c] || ''))
   ];
@@ -1099,32 +1098,32 @@ function buildSheet(data) {
 
   const titleStyle = {
     font:      { name:'Arial', sz:14, bold:true, color:{rgb:'1A3A5C'} },
-    fill:      { fgColor:{rgb:'D9E8F5'} },
+    fill:      { patternType:'solid', fgColor:{rgb:'D9E8F5'} },
     alignment: { horizontal:'left', vertical:'center' }
   };
   const headerStyle = {
     font:      { name:'Arial', sz:11, bold:true, color:{rgb:'FFFFFF'} },
-    fill:      { fgColor:{rgb:'2E5FA3'} },
+    fill:      { patternType:'solid', fgColor:{rgb:'2E5FA3'} },
     alignment: { horizontal:'center', vertical:'center', wrapText:true },
     border:    { bottom:{ style:'medium', color:{rgb:'1A3A5C'} } }
   };
   const cellStyle = { font:{ name:'Arial', sz:11 }, alignment:{ vertical:'center', wrapText:true } };
-  const altStyle  = { font:{ name:'Arial', sz:11 }, fill:{ fgColor:{rgb:'EEF4FB'} }, alignment:{ vertical:'center', wrapText:true } };
+  const altStyle  = { font:{ name:'Arial', sz:11 }, fill:{ patternType:'solid', fgColor:{rgb:'EEF4FB'} }, alignment:{ vertical:'center', wrapText:true } };
 
   const enc = (r, c) => XLSX.utils.encode_cell({r, c});
 
   ws[enc(0,0)].s = titleStyle;
-  for (let c = 0; c < colCount; c++) { const ref = enc(2,c); if (ws[ref]) ws[ref].s = headerStyle; }
+  for (let c = 0; c < colCount; c++) { const ref = enc(1,c); if (ws[ref]) ws[ref].s = headerStyle; }
   for (let r = 0; r < data.length; r++) {
     const style = r % 2 === 0 ? cellStyle : altStyle;
-    for (let c = 0; c < colCount; c++) { const ref = enc(r+3,c); if (ws[ref]) ws[ref].s = style; }
+    for (let c = 0; c < colCount; c++) { const ref = enc(r+2,c); if (ws[ref]) ws[ref].s = style; }
   }
 
   ws['!cols'] = cols.map(c => {
     const dataMax = data.reduce((m, r) => Math.max(m, String(r[c]||'').length), 0);
     return { wch: Math.max(c.length, dataMax) + 4 };
   });
-  ws['!rows'] = [{ hpt:28 }, { hpt:6 }, { hpt:22 }];
+  ws['!rows'] = [{ hpt:28 }, { hpt:22 }];
 
   return ws;
 }
