@@ -663,7 +663,7 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
 <script>
 // ── Module map ───────────────────────────────────────────────────────
 const MODULE_MAP = {
@@ -1080,73 +1080,82 @@ function clearForm() {
 }
 
 // ── Excel export ─────────────────────────────────────────────────────
-function buildSheet(data) {
+async function buildWorkbook(data) {
   const cols  = ['Task Number','Task Description','Environment(s)','SQL or ORA','15 or 15U',
                  'Modules Tested','Status','Time Tested','Remaining Time (est)','Notes'];
   const today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
 
-  const wsData = [
-    ['Daily Task Log — ' + today],
-    cols,
-    ...data.map(r => cols.map(c => r[c] || ''))
-  ];
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Task Log');
 
-  const ws       = XLSX.utils.aoa_to_sheet(wsData);
-  const colCount = cols.length;
+  // ── Title row ───────────────────────────────────────────────────────
+  ws.addRow(['Daily Task Log — ' + today]);
+  ws.mergeCells(1, 1, 1, cols.length);
+  const titleCell = ws.getCell(1, 1);
+  titleCell.font      = { name:'Arial', size:14, bold:true, color:{ argb:'FF1A3A5C' } };
+  titleCell.fill      = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFD9E8F5' } };
+  titleCell.alignment = { horizontal:'left', vertical:'middle' };
+  ws.getRow(1).height = 28;
 
-  ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:colCount-1} }];
-
-  const titleStyle = {
-    font:      { name:'Arial', sz:14, bold:true, color:{rgb:'1A3A5C'} },
-    fill:      { patternType:'solid', fgColor:{rgb:'D9E8F5'} },
-    alignment: { horizontal:'left', vertical:'center' }
-  };
-  const headerStyle = {
-    font:      { name:'Arial', sz:11, bold:true, color:{rgb:'FFFFFF'} },
-    fill:      { patternType:'solid', fgColor:{rgb:'2E5FA3'} },
-    alignment: { horizontal:'center', vertical:'center', wrapText:true },
-    border:    { bottom:{ style:'medium', color:{rgb:'1A3A5C'} } }
-  };
-  const cellStyle = { font:{ name:'Arial', sz:11 }, alignment:{ vertical:'center', wrapText:true } };
-  const altStyle  = { font:{ name:'Arial', sz:11 }, fill:{ patternType:'solid', fgColor:{rgb:'EEF4FB'} }, alignment:{ vertical:'center', wrapText:true } };
-
-  const enc = (r, c) => XLSX.utils.encode_cell({r, c});
-
-  ws[enc(0,0)].s = titleStyle;
-  for (let c = 0; c < colCount; c++) { const ref = enc(1,c); if (ws[ref]) ws[ref].s = headerStyle; }
-  for (let r = 0; r < data.length; r++) {
-    const style = r % 2 === 0 ? cellStyle : altStyle;
-    for (let c = 0; c < colCount; c++) { const ref = enc(r+2,c); if (ws[ref]) ws[ref].s = style; }
-  }
-
-  ws['!cols'] = cols.map(c => {
-    const dataMax = data.reduce((m, r) => Math.max(m, String(r[c]||'').length), 0);
-    return { wch: Math.max(c.length, dataMax) + 4 };
+  // ── Header row ──────────────────────────────────────────────────────
+  ws.addRow(cols);
+  const headerRow = ws.getRow(2);
+  headerRow.height = 22;
+  cols.forEach((_, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.font      = { name:'Arial', size:11, bold:true, color:{ argb:'FFFFFFFF' } };
+    cell.fill      = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF2E5FA3' } };
+    cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+    cell.border    = { bottom:{ style:'medium', color:{ argb:'FF1A3A5C' } } };
   });
-  ws['!rows'] = [{ hpt:28 }, { hpt:22 }];
 
-  return ws;
+  // ── Data rows ───────────────────────────────────────────────────────
+  data.forEach((record, idx) => {
+    ws.addRow(cols.map(c => record[c] || ''));
+    const dataRow = ws.getRow(idx + 3);
+    cols.forEach((_, i) => {
+      const cell = dataRow.getCell(i + 1);
+      cell.font      = { name:'Arial', size:11 };
+      cell.alignment = { vertical:'middle', wrapText:true };
+      if (idx % 2 !== 0) {
+        cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFEEF4FB' } };
+      }
+    });
+  });
+
+  // ── Column widths ───────────────────────────────────────────────────
+  ws.columns = cols.map(col => {
+    const dataMax = data.reduce((m, r) => Math.max(m, String(r[col]||'').length), 0);
+    return { width: Math.max(col.length, dataMax) + 4 };
+  });
+
+  return wb;
 }
 
-function midDayDownload() {
+async function downloadWorkbook(wb, filename) {
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob   = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url    = URL.createObjectURL(blob);
+  const a      = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function midDayDownload() {
   if (!records.length) { showToast('No records to export yet.'); return; }
-  const ws = buildSheet(records);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Task Log');
+  const wb    = await buildWorkbook(records);
   const now   = new Date();
   const stamp = now.toISOString().slice(0,10) + '_' +
     String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0');
-  XLSX.writeFile(wb, `task-log-midday-${stamp}.xlsx`, { bookSST:false, cellStyles:true });
+  await downloadWorkbook(wb, `task-log-midday-${stamp}.xlsx`);
   showToast('Mid-day snapshot downloaded — data retained.');
 }
 
-function exportExcel() {
+async function exportExcel() {
   if (!records.length) { showToast('No records to export yet.'); return; }
-  const ws   = buildSheet(records);
-  const wb   = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Task Log');
+  const wb   = await buildWorkbook(records);
   const date = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `task-log-${date}.xlsx`, { bookSST:false, cellStyles:true });
+  await downloadWorkbook(wb, `task-log-${date}.xlsx`);
   records = [];
   clearStorage();
   clearForm();
