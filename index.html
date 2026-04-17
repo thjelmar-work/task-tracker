@@ -1129,6 +1129,22 @@ async function buildWorkbook(data) {
     return { width: Math.max(col.length, dataMax) + 4 };
   });
 
+  // ── Outer thick border ──────────────────────────────────────────────
+  const totalRows = 2 + data.length;
+  const totalCols = cols.length;
+  const thick = { style:'thick', color:{ argb:'FF1A3A5C' } };
+  for (let r = 1; r <= totalRows; r++) {
+    for (let c = 1; c <= totalCols; c++) {
+      const cell   = ws.getCell(r, c);
+      const border = Object.assign({}, cell.border || {});
+      if (r === 1)         border.top    = thick;
+      if (r === totalRows) border.bottom = thick;
+      if (c === 1)         border.left   = thick;
+      if (c === totalCols) border.right  = thick;
+      cell.border = border;
+    }
+  }
+
   return wb;
 }
 
