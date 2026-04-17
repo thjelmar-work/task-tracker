@@ -1094,7 +1094,7 @@ async function buildWorkbook(data) {
   const titleCell = ws.getCell(1, 1);
   titleCell.font      = { name:'Arial', size:14, bold:true, color:{ argb:'FF1A3A5C' } };
   titleCell.fill      = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFD9E8F5' } };
-  titleCell.alignment = { horizontal:'left', vertical:'middle' };
+  titleCell.alignment = { horizontal:'center', vertical:'middle' };
   ws.getRow(1).height = 28;
 
   // ── Header row ──────────────────────────────────────────────────────
@@ -1116,7 +1116,7 @@ async function buildWorkbook(data) {
     cols.forEach((_, i) => {
       const cell = dataRow.getCell(i + 1);
       cell.font      = { name:'Arial', size:11 };
-      cell.alignment = { vertical:'middle', wrapText:true };
+      cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
       if (idx % 2 !== 0) {
         cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFEEF4FB' } };
       }
