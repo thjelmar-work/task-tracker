@@ -239,7 +239,8 @@
     gap: 4px;
   }
 
-  .sidebar-time-input {
+  .sidebar-time-input,
+  .sidebar-notes-input {
     flex: 1;
     min-width: 0;
     padding: 4px 7px;
@@ -251,6 +252,19 @@
     font-family: inherit;
     outline: none;
     box-shadow: 0 0 0 2px rgba(55,138,221,0.15);
+  }
+
+  .sidebar-notes-input {
+    resize: none;
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 2px;
+  }
+
+  .sidebar-edit-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-bottom: 1px;
   }
 
   .sidebar-edit-save,
@@ -878,8 +892,11 @@ function cancelEdit() {
 function saveEdit(idx) {
   const input = document.getElementById('sidebarEditInput');
   if (!input) return;
-  const newVal = input.value.trim();
-  records[idx]['Time Tested'] = newVal || '—';
+  const newTime  = input.value.trim();
+  const notesEl  = document.getElementById('sidebarEditNotes');
+  const newNotes = notesEl ? notesEl.value.trim() : records[idx]['Notes'];
+  records[idx]['Time Tested'] = newTime || '—';
+  records[idx]['Notes']       = newNotes;
   editingIndex = null;
   saveToStorage();
   updateSidebar();
@@ -910,8 +927,10 @@ function updateSidebar() {
     const rawVal    = (r['Time Tested'] && r['Time Tested'] !== '—') ? r['Time Tested'] : '';
 
     if (i === editingIndex) {
+      const escapedNotes = (r['Notes'] || '').replace(/"/g, '&quot;').replace(/`/g, '&#96;');
       return `<div class="sidebar-entry sidebar-entry--editing">
         <span class="sidebar-entry-task" title="${r['Task Number']}">${r['Task Number']}</span>
+        <div class="sidebar-edit-label">Time Tested</div>
         <div class="sidebar-edit-row">
           <input class="sidebar-time-input" id="sidebarEditInput"
                  value="${rawVal}" placeholder="e.g. 1h 30m"
@@ -919,6 +938,9 @@ function updateSidebar() {
           <button class="sidebar-edit-save"   onclick="saveEdit(${i})"  title="Save">✓</button>
           <button class="sidebar-edit-cancel" onclick="cancelEdit()"    title="Cancel">✕</button>
         </div>
+        <div class="sidebar-edit-label">Notes</div>
+        <textarea class="sidebar-notes-input" id="sidebarEditNotes"
+                  rows="3" placeholder="Additional notes...">${escapedNotes}</textarea>
       </div>`;
     }
 
