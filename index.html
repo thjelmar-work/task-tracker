@@ -525,6 +525,9 @@
   .status-btn.active-completed { background: var(--green-bg); border-color: var(--green-border); color: var(--green-text); }
   .status-btn.active-sentback  { background: var(--red-bg);   border-color: var(--red-border);   color: var(--red-text);   }
   .status-btn.active-paused    { background: var(--amber-bg); border-color: var(--amber-border); color: var(--amber-text); }
+  .status-btn.ver-env-both     { background: var(--blue-bg);   border-color: var(--blue-border);   color: var(--blue-text);   }
+  .status-btn.ver-env-sql      { background: var(--green-bg);  border-color: var(--green-border);  color: var(--green-text);  }
+  .status-btn.ver-env-ora      { background: var(--purple-bg); border-color: var(--purple-border); color: var(--purple-text); }
 
   .divider { border: none; border-top: 0.5px solid var(--border); margin: 1.25rem 0; }
 
@@ -709,6 +712,7 @@
           <button class="status-btn" id="btn-15"  onclick="toggleVer('15', '15')">15</button>
           <button class="status-btn" id="btn-15u" onclick="toggleVer('15u','15U')">15U</button>
         </div>
+        <div id="verEnvRow" style="display:none; margin-top:6px;"></div>
       </div>
 
       <div class="field">
@@ -805,6 +809,7 @@ let selectedDbs    = [];   // multi-select: 'SQL', 'ORA', or both
 let selectedVers   = [];   // multi-select: '15', '15U', or both
 let sidebarFmt     = 'hm'; // 'hm' | 'dec'
 let moduleEnvs         = {}; // { moduleName: 'sql'|'ora'|'both' } — only used when both DBs selected
+let verEnvs            = {}; // { '15': 'sql'|'ora'|'both', '15U': ... } — only when both DBs + both vers
 let editingIndex       = null;
 let editingShowStatus  = false;  // whether Yes was clicked on status question
 let editingNewStatus   = '';     // newly selected status (empty = keep original)
@@ -960,6 +965,7 @@ function saveFormState() {
       selectedEnv,
       selectedDbs,
       selectedVers,
+      verEnvs,
       timeModes,
       moduleEnvs
     };
@@ -1017,6 +1023,8 @@ function restoreFormState() {
       if (selectedVers.includes('15'))  document.getElementById('btn-15').classList.add('active-completed');
       if (selectedVers.includes('15U')) document.getElementById('btn-15u').classList.add('active-completed');
     }
+    if (s.verEnvs) verEnvs = s.verEnvs;
+    renderVerEnvRow();
 
     // Status button
     if (s.selectedStatus) setStatus(s.selectedStatus);
@@ -1242,6 +1250,7 @@ function toggleDb(key, label) {
     document.getElementById('btn-'+key).classList.remove('active-completed');
   }
   renderModulePills(); // re-render so env selectors appear/disappear
+  renderVerEnvRow();
   saveFormState();
 }
 
@@ -1253,7 +1262,58 @@ function toggleVer(key, label) {
   } else {
     selectedVers.splice(idx, 1);
     document.getElementById('btn-'+key).classList.remove('active-completed');
+    delete verEnvs[label];
   }
+  renderVerEnvRow();
+  saveFormState();
+}
+
+function renderVerEnvRow() {
+  const row      = document.getElementById('verEnvRow');
+  if (!row) return;
+  const showEnvs = selectedDbs.length === 2 && selectedVers.includes('15') && selectedVers.includes('15U');
+
+  if (!showEnvs) {
+    row.style.display = 'none';
+    verEnvs = {};
+    // Reset version buttons to default active-completed color
+    ['15','15u'].forEach(k => {
+      const btn = document.getElementById('btn-'+k);
+      if (btn && btn.classList.contains('active-completed')) {
+        btn.className = 'status-btn active-completed';
+      }
+    });
+    return;
+  }
+
+  // Ensure defaults
+  if (!verEnvs['15'])  verEnvs['15']  = 'both';
+  if (!verEnvs['15U']) verEnvs['15U'] = 'both';
+
+  // Apply color to each version button
+  const btnKeys = { '15':'15', '15U':'15u' };
+  ['15','15U'].forEach(v => {
+    const btn = document.getElementById('btn-'+btnKeys[v]);
+    if (btn) btn.className = `status-btn ver-env-${verEnvs[v]}`;
+  });
+
+  row.style.display = '';
+  row.innerHTML = ['15','15U'].map(v => {
+    const env = verEnvs[v] || 'both';
+    return `<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;">
+      <span style="font-size:12px;font-weight:600;min-width:28px;">${v}</span>
+      <span class="pill-env-row" onclick="event.stopPropagation()">
+        <button class="pill-env-btn${env==='sql' ?' pill-env-active':''}" onclick="setVerEnv('${v}','sql')">SQL</button>
+        <button class="pill-env-btn${env==='both'?' pill-env-active':''}" onclick="setVerEnv('${v}','both')">Both</button>
+        <button class="pill-env-btn${env==='ora' ?' pill-env-active':''}" onclick="setVerEnv('${v}','ora')">ORA</button>
+      </span>
+    </div>`;
+  }).join('');
+}
+
+function setVerEnv(ver, env) {
+  verEnvs[ver] = env;
+  renderVerEnvRow();
   saveFormState();
 }
 
@@ -1383,6 +1443,20 @@ function getCheckedModules() {
 }
 
 // ── Record management ────────────────────────────────────────────────
+function getVersValue() {
+  if (!selectedVers.length) return '—';
+  // Only show env breakdown when both DBs + both versions are selected
+  if (selectedDbs.length === 2 && selectedVers.includes('15') && selectedVers.includes('15U')) {
+    const sqlVers  = selectedVers.filter(v => verEnvs[v] === 'sql'  || verEnvs[v] === 'both');
+    const oraVers  = selectedVers.filter(v => verEnvs[v] === 'ora'  || verEnvs[v] === 'both');
+    const parts = [];
+    if (sqlVers.length) parts.push(`SQL: ${sqlVers.join('/')}`);
+    if (oraVers.length) parts.push(`ORA: ${oraVers.join('/')}`);
+    return parts.join(' | ');
+  }
+  return selectedVers.join('/');
+}
+
 function submitEntry() {
   const task = document.getElementById('taskNum').value.trim();
   if (!task)           { showToast('Please enter a task number.'); return; }
@@ -1393,7 +1467,7 @@ function submitEntry() {
     'Task Description':     document.getElementById('taskDesc').value.trim(),
     'Environment(s)':       selectedEnv || '—',
     'SQL or ORA':           selectedDbs.length ? selectedDbs.join('/') : '—',
-    '15 or 15U':            selectedVers.length ? selectedVers.join('/') : '—',
+    '15 or 15U':            getVersValue(),
     'Modules Tested':       getCheckedModules() || '—',
     'Time Tested':          document.getElementById('timeInput').value.trim() || '—',
     'Remaining Time (est)': document.getElementById('timeRemaining').value.trim() || '—',
@@ -1433,7 +1507,9 @@ function clearForm() {
   ['sql','ora'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
   moduleEnvs = {};
   selectedVers = [];
+  verEnvs = {};
   ['15','15u'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
+  renderVerEnvRow();
   clearFormStorage();
 }
 
