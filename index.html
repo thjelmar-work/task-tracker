@@ -696,7 +696,6 @@
           <button class="status-btn" id="btn-beta"    onclick="toggleEnv('beta',   'Beta')">Beta</button>
           <button class="status-btn" id="btn-release" onclick="toggleEnv('release','Release')">Release</button>
         </div>
-        <div id="envEnvRow" style="display:none; margin-top:6px;"></div>
       </div>
 
       <div class="field">
@@ -798,9 +797,10 @@ const MODULE_MAP = {
   comp: ['HS','LA','EHS'],
   dyn:  ['QAE','QAS','EM','PAM','RO'],
   coi:  ['COI'],
-  tt:   ['TTA','TTC','TTD','TTK','TTF','TTO'],
-  ent:  ['PD/PT','HS','LA','EHS','QAE','QAS','EM','PAM','RO','COI','TTA','TTC','TTD','TTK','TTF','TTO']
+  tt:   ['TTA','TTC','TTD','TTK','TTF','TTO']
 };
+// ENT non-DYN base — DYN portion is appended dynamically via getDynModules()
+const ENT_BASE = ['PD/PT','HS','LA','EHS','COI','TTA','TTC','TTD','TTK','TTF','TTO'];
 
 // ── App state ────────────────────────────────────────────────────────
 let records      = [];
@@ -811,7 +811,6 @@ let selectedVers   = [];   // multi-select: '15', '15U', or both
 let sidebarFmt     = 'hm'; // 'hm' | 'dec'
 let moduleEnvs         = {}; // { moduleName: 'sql'|'ora'|'both' } — only used when both DBs selected
 let verEnvs            = {}; // { '15': 'sql'|'ora'|'both', '15U': ... } — only when both DBs + both vers
-let envEnvs            = {}; // { 'Alpha': 'sql'|'ora'|'both', ... } — when both DBs + 2+ envs selected
 let editingIndex       = null;
 let editingShowStatus  = false;  // whether Yes was clicked on status question
 let editingNewStatus   = '';     // newly selected status (empty = keep original)
@@ -965,7 +964,6 @@ function saveFormState() {
       notes:          document.getElementById('notes').value,
       selectedStatus,
       selectedEnvs,
-      envEnvs,
       selectedDbs,
       selectedVers,
       verEnvs,
@@ -1020,8 +1018,6 @@ function restoreFormState() {
       const k = envKeyMap[s.selectedEnv];
       if (k) document.getElementById('btn-' + k).classList.add('active-completed');
     }
-    if (s.envEnvs) envEnvs = s.envEnvs;
-    renderEnvEnvRow();
 
     // DB buttons (multi-select)
     if (s.selectedDbs && s.selectedDbs.length) {
@@ -1254,66 +1250,15 @@ function setSingle(group, key, label) {
 }
 
 function toggleEnv(key, label) {
-  const idx = selectedEnvs.indexOf(label);
-  if (idx === -1) {
+  const alreadySelected = selectedEnvs.includes(label);
+  // Clear all env buttons first (single-select)
+  selectedEnvs = [];
+  ['alpha','beta','release'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
+  // Toggle on if it wasn't already selected
+  if (!alreadySelected) {
     selectedEnvs.push(label);
     document.getElementById('btn-'+key).classList.add('active-completed');
-  } else {
-    selectedEnvs.splice(idx, 1);
-    document.getElementById('btn-'+key).classList.remove('active-completed');
-    delete envEnvs[label];
   }
-  renderEnvEnvRow();
-  renderModulePills(); // re-evaluate DYN modules
-  saveFormState();
-}
-
-function renderEnvEnvRow() {
-  const row = document.getElementById('envEnvRow');
-  if (!row) return;
-  const showEnvs = selectedDbs.length === 2 && selectedEnvs.length >= 2;
-
-  if (!showEnvs) {
-    row.style.display = 'none';
-    envEnvs = {};
-    // Reset env buttons back to plain active-completed (no color class)
-    const keyMap = { 'Alpha':'alpha', 'Beta':'beta', 'Release':'release' };
-    selectedEnvs.forEach(env => {
-      const btn = document.getElementById('btn-' + keyMap[env]);
-      if (btn) btn.className = 'status-btn active-completed';
-    });
-    return;
-  }
-
-  // Set defaults for any newly selected env
-  selectedEnvs.forEach(env => {
-    if (!envEnvs[env]) envEnvs[env] = 'both';
-  });
-
-  // Apply color to each active env button
-  const keyMap = { 'Alpha':'alpha', 'Beta':'beta', 'Release':'release' };
-  selectedEnvs.forEach(env => {
-    const btn = document.getElementById('btn-' + keyMap[env]);
-    if (btn) btn.className = `status-btn ver-env-${envEnvs[env]}`;
-  });
-
-  row.style.display = '';
-  row.innerHTML = selectedEnvs.map(env => {
-    const db = envEnvs[env] || 'both';
-    return `<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;">
-      <span style="font-size:12px;font-weight:600;min-width:48px;">${env}</span>
-      <span class="pill-env-row" onclick="event.stopPropagation()">
-        <button class="pill-env-btn${db==='sql' ?' pill-env-active':''}" onclick="setEnvEnv('${env}','sql')">SQL</button>
-        <button class="pill-env-btn${db==='both'?' pill-env-active':''}" onclick="setEnvEnv('${env}','both')">Both</button>
-        <button class="pill-env-btn${db==='ora' ?' pill-env-active':''}" onclick="setEnvEnv('${env}','ora')">ORA</button>
-      </span>
-    </div>`;
-  }).join('');
-}
-
-function setEnvEnv(env, db) {
-  envEnvs[env] = db;
-  renderEnvEnvRow();
   renderModulePills(); // re-evaluate DYN conditional modules
   saveFormState();
 }
@@ -1329,7 +1274,6 @@ function toggleDb(key, label) {
   }
   renderModulePills(); // re-render so env selectors appear/disappear
   renderVerEnvRow();
-  renderEnvEnvRow();
   saveFormState();
 }
 
@@ -1356,11 +1300,10 @@ function renderVerEnvRow() {
     row.style.display = 'none';
     verEnvs = {};
     // Reset version buttons to default active-completed color
-    ['15','15u'].forEach(k => {
-      const btn = document.getElementById('btn-'+k);
-      if (btn && btn.classList.contains('active-completed')) {
-        btn.className = 'status-btn active-completed';
-      }
+    const verKeyMap = { '15':'15', '15U':'15u' };
+    ['15','15U'].forEach(v => {
+      const btn = document.getElementById('btn-'+verKeyMap[v]);
+      if (btn && selectedVers.includes(v)) btn.className = 'status-btn active-completed';
     });
     return;
   }
@@ -1398,26 +1341,31 @@ function setVerEnv(ver, env) {
 
 function getPrefix(val) {
   const part = val.trim().toLowerCase().split('-')[0];
+  if (part === 'ent') return 'ent';
   return Object.prototype.hasOwnProperty.call(MODULE_MAP, part) ? part : null;
 }
 
-// ── Conditional DYN module list ──────────────────────────────────────
+// ── Module list resolver ─────────────────────────────────────────────
+function getModulesForPrefix(prefix) {
+  if (prefix === 'dyn') return getDynModules();
+  if (prefix === 'ent')  return [...ENT_BASE, ...getDynModules()];
+  return MODULE_MAP[prefix];
+}
+
+// ── DYN module list ───────────────────────────────────────────────────
+// Default: base modules (shown for all conditions incl. both DBs selected)
+// Condition 2 (Alpha=ORA, Beta=SQL, Release=ORA) → swaps to FM, FT, AWD, AFM
 function getDynModules() {
-  const base = ['QAE','QAS','EM','PAM','RO','Subawards'];
-  // Conditions require all 3 envs selected + both DBs + explicit per-env DB assignments
-  const allEnvs = selectedEnvs.includes('Alpha') && selectedEnvs.includes('Beta') && selectedEnvs.includes('Release');
-  if (allEnvs && selectedDbs.length === 2) {
-    const a = envEnvs['Alpha'];
-    const b = envEnvs['Beta'];
-    const r = envEnvs['Release'];
-    if (a === 'sql' && b === 'ora' && r === 'sql') {
-      // Condition 1: show DYN base + AFM (Subawards already in base)
-      return [...base, 'AFM'];
-    }
-    if (a === 'ora' && b === 'sql' && r === 'ora') {
-      // Condition 2: hide DYN base, show FM, FT, AWD, AFM
-      return ['FM', 'FT', 'AWD', 'AFM'];
-    }
+  const base    = ['QAE','QAS','EM','PAM','RO','Subawards','AFM'];
+  const env     = selectedEnvs[0];
+  const oraOnly = selectedDbs.length === 1 && selectedDbs.includes('ORA');
+  const sqlOnly = selectedDbs.length === 1 && selectedDbs.includes('SQL');
+
+  // Condition 2: Alpha+ORA, Beta+SQL, Release+ORA → FM, FT, AWD, AFM
+  if ((env === 'Alpha'   && oraOnly) ||
+      (env === 'Beta'    && sqlOnly) ||
+      (env === 'Release' && oraOnly)) {
+    return ['FM', 'FT', 'AWD', 'AFM'];
   }
   return base;
 }
@@ -1431,8 +1379,12 @@ function updateModules() {
     saveFormState();
     return;
   }
+  if (!selectedDbs.length) {
+    area.innerHTML = '<span class="no-modules">Select SQL or ORA to see available modules</span>';
+    return;
+  }
   // Keep only env entries for modules that still exist in this prefix
-  const modules = prefix === 'dyn' ? getDynModules() : MODULE_MAP[prefix];
+  const modules = getModulesForPrefix(prefix);
   const valid = new Set(modules);
   Object.keys(moduleEnvs).forEach(k => { if (!valid.has(k)) delete moduleEnvs[k]; });
   renderModulePills();
@@ -1442,19 +1394,43 @@ function updateModules() {
 function renderModulePills() {
   const prefix = getPrefix(document.getElementById('taskNum').value);
   if (!prefix) return;
+  if (!selectedDbs.length) {
+    document.getElementById('moduleArea').innerHTML =
+      '<span class="no-modules">Select SQL or ORA to see available modules</span>';
+    return;
+  }
   const bothDbs = selectedDbs.length === 2;
   const area = document.getElementById('moduleArea');
-  const modules = prefix === 'dyn' ? getDynModules() : MODULE_MAP[prefix];
+  const modules = getModulesForPrefix(prefix);
+  // Prune any checked modules that no longer appear in the current list
+  const validSet = new Set(modules);
+  Object.keys(moduleEnvs).forEach(k => { if (!validSet.has(k)) delete moduleEnvs[k]; });
+  // For ENT tasks with both DBs:
+  //   ENT_BASE modules  → SQL/ORA/Both mini buttons (user-assigned)
+  //   DYN modules       → no mini buttons; auto-colored by condition mapping:
+  //                        Alpha→SQL(green), Beta→ORA(purple), Release→SQL(green)
+  // For all other prefixes: all modules get mini buttons when both DBs selected
+  const entBaseSet = prefix === 'ent' ? new Set(ENT_BASE) : null;
+  // Condition 1 env→DB mapping used for ENT DYN auto-color
+  const ENT_DYN_ENV_MAP = { 'Alpha': 'sql', 'Beta': 'ora', 'Release': 'sql' };
+  const dynAutoEnv = ENT_DYN_ENV_MAP[selectedEnvs[0]] || 'both';
   area.innerHTML = modules.map(m => {
-    const isChecked = Object.prototype.hasOwnProperty.call(moduleEnvs, m);
-    const env = moduleEnvs[m] || 'both';
-    const envRow = (isChecked && bothDbs) ? `
+    const isChecked    = Object.prototype.hasOwnProperty.call(moduleEnvs, m);
+    const isEntDyn     = entBaseSet !== null && !entBaseSet.has(m);
+    const canAttribute = bothDbs && (entBaseSet ? entBaseSet.has(m) : true);
+    const env          = isEntDyn ? dynAutoEnv : (moduleEnvs[m] || 'both');
+    const envRow = (isChecked && canAttribute) ? `
       <span class="pill-env-row" onclick="event.stopPropagation()">
         <button class="pill-env-btn${env==='sql' ?' pill-env-active':''}" onclick="setModuleEnv('${m}','sql', event)">SQL</button>
         <button class="pill-env-btn${env==='both'?' pill-env-active':''}" onclick="setModuleEnv('${m}','both',event)">Both</button>
         <button class="pill-env-btn${env==='ora' ?' pill-env-active':''}" onclick="setModuleEnv('${m}','ora', event)">ORA</button>
       </span>` : '';
-    const pillClass = isChecked ? (bothDbs ? `checked env-${env}` : 'checked') : '';
+    // ENT DYN modules: auto-colored when checked + both DBs; no mini buttons
+    const pillClass = isChecked
+      ? (canAttribute
+          ? `checked env-${env}`
+          : (isEntDyn && bothDbs ? `checked env-${dynAutoEnv}` : 'checked'))
+      : '';
     return `<label class="cb-pill ${pillClass}" onclick="togglePill(this)">
       <input type="checkbox" value="${m}"${isChecked?' checked':''}>${m}${envRow}
     </label>`;
@@ -1602,11 +1578,9 @@ function clearForm() {
     document.getElementById('btn-'+k).className = 'status-btn'
   );
   selectedEnvs = [];
-  envEnvs = {};
   ['alpha','beta','release'].forEach(k =>
     document.getElementById('btn-'+k).className = 'status-btn'
   );
-  renderEnvEnvRow();
   selectedDbs = [];
   ['sql','ora'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
   moduleEnvs = {};
