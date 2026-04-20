@@ -677,7 +677,7 @@
       <div class="field">
         <label class="field-label" for="timeInput">Time tested</label>
         <div class="time-row">
-          <input type="text" id="timeInput" placeholder="e.g. 1h 30m">
+          <input type="text" id="timeInput" placeholder="e.g. 1hr 30min" onblur="validateTimeField('timeInput','tested')">
           <button class="time-toggle" onclick="toggleTimeMode('tested')" id="timeModeBtn">Switch to decimal (hrs)</button>
         </div>
       </div>
@@ -685,7 +685,7 @@
       <div class="field">
         <label class="field-label" for="timeRemaining">Remaining testing time (est)</label>
         <div class="time-row">
-          <input type="text" id="timeRemaining" placeholder="e.g. 0h 45m">
+          <input type="text" id="timeRemaining" placeholder="e.g. 0hr 45min" onblur="validateTimeField('timeRemaining','remaining')">
           <button class="time-toggle" onclick="toggleTimeMode('remaining')" id="timeRemModeBtn">Switch to decimal (hrs)</button>
         </div>
       </div>
@@ -882,7 +882,8 @@ function loadFromStorage() {
 function parseTimeToHours(str) {
   if (!str || str === '—') return 0;
   const s = str.trim();
-  const hmMatch = s.match(/^(?:(\d+(?:\.\d+)?)\s*h)?\s*(?:(\d+(?:\.\d+)?)\s*m)?$/i);
+  // Supports: "1hr 30min", "2hrs 5mins", "1h 30m", "45min", "30m", "1hr", etc.
+  const hmMatch = s.match(/^(?:(\d+(?:\.\d+)?)\s*h(?:rs?)?)?\s*(?:(\d+(?:\.\d+)?)\s*m(?:ins?)?)?$/i);
   if (hmMatch && (hmMatch[1] || hmMatch[2])) {
     return parseFloat(hmMatch[1] || 0) + parseFloat(hmMatch[2] || 0) / 60;
   }
@@ -890,14 +891,16 @@ function parseTimeToHours(str) {
   return isNaN(dec) ? 0 : dec;
 }
 
-// Decimal hours → "Xh Ym"
+// Decimal hours → "Xhr(s) Ymin(s)"
 function formatHM(h) {
-  if (h <= 0) return '0h 0m';
+  if (h <= 0) return '0hr 0min';
   const hrs  = Math.floor(h);
   const mins = Math.round((h - hrs) * 60);
-  if (hrs === 0)  return `${mins}m`;
-  if (mins === 0) return `${hrs}h`;
-  return `${hrs}h ${mins}m`;
+  const hStr = hrs  > 0 ? `${hrs}${hrs  === 1 ? 'hr'  : 'hrs'}`  : '';
+  const mStr = mins > 0 ? `${mins}${mins === 1 ? 'min' : 'mins'}` : '';
+  if (!hStr) return mStr;
+  if (!mStr) return hStr;
+  return `${hStr} ${mStr}`;
 }
 
 // Decimal hours → "1.50"
@@ -1003,7 +1006,7 @@ function updateSidebar() {
         <div class="sidebar-edit-label">Time Tested</div>
         <div class="sidebar-edit-row">
           <input class="sidebar-time-input" id="sidebarEditInput"
-                 value="${rawVal}" placeholder="e.g. 1h 30m"
+                 value="${rawVal}" placeholder="e.g. 1hr 30min"
                  onkeydown="handleEditKey(event,${i})">
           <button class="sidebar-edit-save"   onclick="saveEdit(${i})"  title="Save">✓</button>
           <button class="sidebar-edit-cancel" onclick="cancelEdit()"    title="Cancel">✕</button>
@@ -1111,18 +1114,42 @@ function setStatus(s) {
 
 let timeModes = { tested: 'hm', remaining: 'hm' };
 
+function isValidTimeInput(str, mode) {
+  if (!str || str.trim() === '') return true; // empty is always fine
+  const s = str.trim();
+  if (mode === 'dec') {
+    const n = parseFloat(s);
+    return !isNaN(n) && isFinite(n) && n >= 0 && String(s).match(/^\d+(\.\d+)?$/);
+  }
+  const hmMatch = s.match(/^(?:(\d+(?:\.\d+)?)\s*h(?:rs?)?)?\s*(?:(\d+(?:\.\d+)?)\s*m(?:ins?)?)?$/i);
+  return !!(hmMatch && (hmMatch[1] || hmMatch[2]));
+}
+
+function validateTimeField(fieldId, modeKey) {
+  const val = document.getElementById(fieldId).value.trim();
+  if (!val) return;
+  if (!isValidTimeInput(val, timeModes[modeKey])) {
+    if (timeModes[modeKey] === 'dec') {
+      showToast('Invalid format. For decimal, enter hours as a number — e.g. 1.50 or 2');
+    } else {
+      showToast('Invalid format. Enter time as — e.g. 1hr 30min, 2hrs, or 45mins');
+    }
+  }
+}
+
 function toggleTimeMode(field) {
+  const inputId = field === 'tested' ? 'timeInput'     : 'timeRemaining';
+  const btnId   = field === 'tested' ? 'timeModeBtn'   : 'timeRemModeBtn';
+  const input   = document.getElementById(inputId);
+  const btn     = document.getElementById(btnId);
+
+  const hours = parseTimeToHours(input.value.trim());
   timeModes[field] = timeModes[field] === 'hm' ? 'dec' : 'hm';
   const isDec = timeModes[field] === 'dec';
-  if (field === 'tested') {
-    document.getElementById('timeInput').placeholder   = isDec ? 'e.g. 1.50'   : 'e.g. 1h 30m';
-    document.getElementById('timeModeBtn').textContent = isDec ? 'Switch to h/m' : 'Switch to decimal (hrs)';
-    document.getElementById('timeInput').value = '';
-  } else {
-    document.getElementById('timeRemaining').placeholder   = isDec ? 'e.g. 0.75'   : 'e.g. 0h 45m';
-    document.getElementById('timeRemModeBtn').textContent  = isDec ? 'Switch to h/m' : 'Switch to decimal (hrs)';
-    document.getElementById('timeRemaining').value = '';
-  }
+
+  input.placeholder = isDec ? 'e.g. 1.50' : 'e.g. 1hr 30min';
+  btn.textContent   = isDec ? 'Switch to h/m' : 'Switch to decimal (hrs)';
+  input.value       = hours > 0 ? (isDec ? formatDec(hours) : formatHM(hours)) : '';
   saveFormState();
 }
 
@@ -1166,8 +1193,8 @@ function clearForm() {
   timeModes = { tested: 'hm', remaining: 'hm' };
   document.getElementById('timeModeBtn').textContent    = 'Switch to decimal (hrs)';
   document.getElementById('timeRemModeBtn').textContent = 'Switch to decimal (hrs)';
-  document.getElementById('timeInput').placeholder      = 'e.g. 1h 30m';
-  document.getElementById('timeRemaining').placeholder  = 'e.g. 0h 45m';
+  document.getElementById('timeInput').placeholder      = 'e.g. 1hr 30min';
+  document.getElementById('timeRemaining').placeholder  = 'e.g. 0hr 45min';
   document.getElementById('moduleArea').innerHTML =
     '<span class="no-modules">Enter a task number to see available modules</span>';
   selectedStatus = '';
