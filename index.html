@@ -548,12 +548,28 @@
   .btn-export  { flex: 2; background: var(--green-bg);  border-color: var(--green-border);  color: var(--green-text);  }
   .btn-reset   { flex: 1; background: var(--surface2);  border-color: var(--border-med);    color: var(--text-muted);  }
   .btn-reset:hover { border-color: var(--red-border); color: var(--red-text); }
+  .btn-masterlog { background: var(--amber-bg); border-color: var(--amber-border); color: var(--amber-text); }
 
   .record-count {
     font-size: 12px;
     color: var(--text-hint);
     text-align: right;
     margin-top: 10px;
+  }
+
+  .masterlog-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 0.5px solid var(--border);
+  }
+
+  .masterlog-count {
+    font-size: 12px;
+    color: var(--text-hint);
   }
 
   /* Toast */
@@ -741,6 +757,14 @@
         <button class="btn btn-reset"  onclick="confirmReset()">Reset all</button>
       </div>
       <div class="record-count" id="recCount"></div>
+      <div class="masterlog-row">
+        <span class="masterlog-count" id="masterLogCount"></span>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-masterlog" onclick="downloadMasterLog()" style="flex:unset;padding:7px 14px;">Download Master Log</button>
+          <button class="btn btn-masterlog" onclick="document.getElementById('masterLogImport').click()" style="flex:unset;padding:7px 14px;opacity:0.8;">Import Master Log</button>
+          <input type="file" id="masterLogImport" accept=".xlsx" style="display:none" onchange="importMasterLog(this)">
+        </div>
+      </div>
     </div>
   </div>
 
@@ -786,9 +810,10 @@ let editingShowStatus  = false;  // whether Yes was clicked on status question
 let editingNewStatus   = '';     // newly selected status (empty = keep original)
 
 // ── localStorage persistence ─────────────────────────────────────────
-const STORE_KEY = 'taskLogger_records_v1';
-const FMT_KEY   = 'taskLogger_sidebarFmt';
-const FORM_KEY  = 'taskLogger_formState_v1';
+const STORE_KEY      = 'taskLogger_records_v1';
+const FMT_KEY        = 'taskLogger_sidebarFmt';
+const FORM_KEY       = 'taskLogger_formState_v1';
+// Master log uses IndexedDB (taskLoggerMaster) — no localStorage key needed
 
 // Records
 function saveToStorage() {
@@ -797,6 +822,129 @@ function saveToStorage() {
 
 function clearStorage() {
   try { localStorage.removeItem(STORE_KEY); } catch(_) {}
+}
+
+// ── Master log — IndexedDB (no storage cap) ──────────────────────────
+function openMasterLogDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('taskLoggerMaster', 1);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('records')) {
+        db.createObjectStore('records', { keyPath: 'id', autoIncrement: true });
+      }
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+async function loadMasterLog() {
+  try {
+    const db    = await openMasterLogDB();
+    const tx    = db.transaction('records', 'readonly');
+    const store = tx.objectStore('records');
+    return await new Promise((resolve, reject) => {
+      const req = store.getAll();
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror   = e => reject(e.target.error);
+    });
+  } catch(_) { return []; }
+}
+
+async function appendToMasterLog(newRecords) {
+  const today   = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+  const stamped = newRecords.map(r => ({ ...r, 'Log Date': today }));
+  try {
+    const db    = await openMasterLogDB();
+    const tx    = db.transaction('records', 'readwrite');
+    const store = tx.objectStore('records');
+    stamped.forEach(r => store.add(r));
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = resolve;
+      tx.onerror    = e => reject(e.target.error);
+    });
+  } catch(_) { showToast('Failed to append to master log.'); }
+  updateMasterLogCount();
+}
+
+async function mergeIntoMasterLog(importedRecords) {
+  try {
+    const db    = await openMasterLogDB();
+    const tx    = db.transaction('records', 'readwrite');
+    const store = tx.objectStore('records');
+    importedRecords.forEach(r => {
+      const { id, ...rest } = r; // strip any existing id so autoIncrement assigns a new one
+      store.add(rest);
+    });
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = resolve;
+      tx.onerror    = e => reject(e.target.error);
+    });
+    updateMasterLogCount();
+  } catch(_) { showToast('Import failed — could not write to IndexedDB.'); }
+}
+
+async function importMasterLog(inputEl) {
+  const file = inputEl.files[0];
+  inputEl.value = '';
+  if (!file) return;
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const wb     = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer);
+    const ws = wb.worksheets[0];
+    if (!ws) { showToast('Could not read worksheet from file.'); return; }
+
+    const headers = {};
+    ws.getRow(2).eachCell((cell, col) => { headers[col] = cell.value; });
+
+    const imported = [];
+    ws.eachRow((row, rowNum) => {
+      if (rowNum <= 2) return;
+      const record = {};
+      row.eachCell((cell, col) => {
+        if (headers[col]) record[headers[col]] = cell.value ?? '';
+      });
+      if (Object.keys(record).length) imported.push(record);
+    });
+
+    if (!imported.length) { showToast('No records found in the selected file.'); return; }
+
+    // If file has no Log Date column (daily log), stamp with today
+    if (!imported.some(r => r['Log Date'])) {
+      const today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+      imported.forEach(r => { r['Log Date'] = today; });
+    }
+
+    await mergeIntoMasterLog(imported);
+    showToast(`Imported ${imported.length} record${imported.length !== 1 ? 's' : ''} into master log.`);
+  } catch(e) {
+    showToast('Failed to read file. Make sure it\'s a valid .xlsx master log.');
+  }
+}
+
+async function clearMasterLog() {
+  try {
+    const db    = await openMasterLogDB();
+    const tx    = db.transaction('records', 'readwrite');
+    tx.objectStore('records').clear();
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = resolve;
+      tx.onerror    = e => reject(e.target.error);
+    });
+  } catch(_) {}
+  updateMasterLogCount();
+}
+
+async function updateMasterLogCount() {
+  const log = await loadMasterLog();
+  const el  = document.getElementById('masterLogCount');
+  if (!el) return;
+  el.textContent = log.length
+    ? `Master log: ${log.length} record${log.length !== 1 ? 's' : ''} across all sessions`
+    : 'Master log: no records yet';
 }
 
 // In-progress form state
@@ -1290,9 +1438,12 @@ function clearForm() {
 }
 
 // ── Excel export ─────────────────────────────────────────────────────
-async function buildWorkbook(data) {
-  const cols  = ['Task Number','Task Description','Environment(s)','SQL or ORA','15 or 15U',
-                 'Modules Tested','Status','Time Tested','Remaining Time (est)','Notes'];
+async function buildWorkbook(data, isMaster = false) {
+  const cols  = isMaster
+    ? ['Log Date','Task Number','Task Description','Environment(s)','SQL or ORA','15 or 15U',
+       'Modules Tested','Status','Time Tested','Remaining Time (est)','Notes']
+    : ['Task Number','Task Description','Environment(s)','SQL or ORA','15 or 15U',
+       'Modules Tested','Status','Time Tested','Remaining Time (est)','Notes'];
   const today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
 
   const wb = new ExcelJS.Workbook();
@@ -1379,6 +1530,7 @@ async function midDayDownload() {
 
 async function exportExcel() {
   if (!records.length) { showToast('No records to export yet.'); return; }
+  await appendToMasterLog(records);
   const wb   = await buildWorkbook(records);
   const date = new Date().toISOString().slice(0, 10);
   await downloadWorkbook(wb, `task-log-${date}.xlsx`);
@@ -1388,6 +1540,15 @@ async function exportExcel() {
   updateCount();
   updateSidebar();
   showToast('Excel downloaded! Log cleared for a new day.');
+}
+
+async function downloadMasterLog() {
+  const log = loadMasterLog();
+  if (!log.length) { showToast('No master log records yet. Wrap up a day first.'); return; }
+  const wb = await buildWorkbook(log, true);
+  const date = new Date().toISOString().slice(0, 10);
+  await downloadWorkbook(wb, `task-log-master-${date}.xlsx`);
+  showToast('Master log downloaded.');
 }
 
 function updateCount() {
@@ -1420,6 +1581,7 @@ function showToast(msg) {
 
 // ── Init ─────────────────────────────────────────────────────────────
 loadFromStorage();
+updateMasterLogCount();
 
 // Save form state on every keystroke in text fields / textareas
 ['taskNum','taskDesc','timeInput','timeRemaining','notes'].forEach(id => {
