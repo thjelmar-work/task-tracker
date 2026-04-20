@@ -461,12 +461,49 @@
     user-select: none;
   }
   .cb-pill:hover { border-color: var(--blue-border); color: var(--text); }
-  .cb-pill.checked {
+  .cb-pill.checked,
+  .cb-pill.env-both {
     background: var(--blue-bg);
     border-color: var(--blue-border);
     color: var(--blue-text);
   }
+  .cb-pill.env-sql {
+    background: var(--green-bg);
+    border-color: var(--green-border);
+    color: var(--green-text);
+  }
+  .cb-pill.env-ora {
+    background: var(--purple-bg);
+    border-color: var(--purple-border);
+    color: var(--purple-text);
+  }
   .cb-pill input { display: none; }
+
+  /* Per-module env selector (shown when both SQL + ORA selected) */
+  .pill-env-row {
+    display: flex;
+    gap: 2px;
+    margin-left: 5px;
+  }
+
+  .pill-env-btn {
+    padding: 1px 5px;
+    font-size: 10px;
+    border: 0.5px solid var(--blue-border);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--blue-text);
+    cursor: pointer;
+    font-family: inherit;
+    line-height: 1.4;
+    transition: background 0.12s, color 0.12s;
+  }
+
+  .pill-env-btn.pill-env-active {
+    background: var(--blue-border);
+    color: #fff;
+    font-weight: 600;
+  }
 
   .no-modules { font-size: 13px; color: var(--text-hint); font-style: italic; }
 
@@ -743,6 +780,7 @@ let selectedEnv    = '';
 let selectedDbs    = [];   // multi-select: 'SQL', 'ORA', or both
 let selectedVers   = [];   // multi-select: '15', '15U', or both
 let sidebarFmt     = 'hm'; // 'hm' | 'dec'
+let moduleEnvs         = {}; // { moduleName: 'sql'|'ora'|'both' } — only used when both DBs selected
 let editingIndex       = null;
 let editingShowStatus  = false;  // whether Yes was clicked on status question
 let editingNewStatus   = '';     // newly selected status (empty = keep original)
@@ -764,8 +802,6 @@ function clearStorage() {
 // In-progress form state
 function saveFormState() {
   try {
-    const checkedModules = [...document.querySelectorAll('#moduleArea .cb-pill input:checked')]
-      .map(c => c.value);
     const state = {
       taskNum:        document.getElementById('taskNum').value,
       taskDesc:       document.getElementById('taskDesc').value,
@@ -777,7 +813,7 @@ function saveFormState() {
       selectedDbs,
       selectedVers,
       timeModes,
-      checkedModules
+      moduleEnvs
     };
     localStorage.setItem(FORM_KEY, JSON.stringify(state));
   } catch(_) {}
@@ -837,18 +873,14 @@ function restoreFormState() {
     // Status button
     if (s.selectedStatus) setStatus(s.selectedStatus);
 
-    // Module pills — render first, then tick saved checkboxes
+    // Module pills — restore env assignments then re-render
     if (s.taskNum) {
-      updateModules();
-      if (s.checkedModules && s.checkedModules.length) {
-        s.checkedModules.forEach(val => {
-          const input = document.querySelector(`#moduleArea .cb-pill input[value="${val}"]`);
-          if (input) {
-            input.checked = true;
-            input.closest('.cb-pill').classList.add('checked');
-          }
-        });
+      if (s.moduleEnvs) moduleEnvs = s.moduleEnvs;
+      // legacy: if old save had checkedModules array, migrate to moduleEnvs
+      else if (s.checkedModules && s.checkedModules.length) {
+        s.checkedModules.forEach(v => { moduleEnvs[v] = 'both'; });
       }
+      renderModulePills();
     }
   } catch(_) {}
 }
@@ -1061,6 +1093,7 @@ function toggleDb(key, label) {
     selectedDbs.splice(idx, 1);
     document.getElementById('btn-'+key).classList.remove('active-completed');
   }
+  renderModulePills(); // re-render so env selectors appear/disappear
   saveFormState();
 }
 
@@ -1086,19 +1119,54 @@ function updateModules() {
   const area   = document.getElementById('moduleArea');
   if (!prefix) {
     area.innerHTML = '<span class="no-modules">Enter a task number to see available modules</span>';
+    moduleEnvs = {};
     saveFormState();
     return;
   }
-  area.innerHTML = MODULE_MAP[prefix].map(m =>
-    `<label class="cb-pill" onclick="togglePill(this)"><input type="checkbox" value="${m}"> ${m}</label>`
-  ).join('');
+  // Keep only env entries for modules that still exist in this prefix
+  const valid = new Set(MODULE_MAP[prefix]);
+  Object.keys(moduleEnvs).forEach(k => { if (!valid.has(k)) delete moduleEnvs[k]; });
+  renderModulePills();
   saveFormState();
 }
 
+function renderModulePills() {
+  const prefix = getPrefix(document.getElementById('taskNum').value);
+  if (!prefix) return;
+  const bothDbs = selectedDbs.length === 2;
+  const area = document.getElementById('moduleArea');
+  area.innerHTML = MODULE_MAP[prefix].map(m => {
+    const isChecked = Object.prototype.hasOwnProperty.call(moduleEnvs, m);
+    const env = moduleEnvs[m] || 'both';
+    const envRow = (isChecked && bothDbs) ? `
+      <span class="pill-env-row" onclick="event.stopPropagation()">
+        <button class="pill-env-btn${env==='sql' ?' pill-env-active':''}" onclick="setModuleEnv('${m}','sql', event)">SQL</button>
+        <button class="pill-env-btn${env==='both'?' pill-env-active':''}" onclick="setModuleEnv('${m}','both',event)">Both</button>
+        <button class="pill-env-btn${env==='ora' ?' pill-env-active':''}" onclick="setModuleEnv('${m}','ora', event)">ORA</button>
+      </span>` : '';
+    const pillClass = isChecked ? (bothDbs ? `checked env-${env}` : 'checked') : '';
+    return `<label class="cb-pill ${pillClass}" onclick="togglePill(this)">
+      <input type="checkbox" value="${m}"${isChecked?' checked':''}>${m}${envRow}
+    </label>`;
+  }).join('');
+}
+
 function togglePill(el) {
-  const cb = el.querySelector('input');
+  const cb = el.querySelector('input[type="checkbox"]');
+  if (!cb) return;
   cb.checked = !cb.checked;
   el.classList.toggle('checked', cb.checked);
+  const modName = cb.value;
+  if (cb.checked) { if (!moduleEnvs[modName]) moduleEnvs[modName] = 'both'; }
+  else            { delete moduleEnvs[modName]; }
+  renderModulePills();
+  saveFormState();
+}
+
+function setModuleEnv(modName, env, event) {
+  event.stopPropagation();
+  moduleEnvs[modName] = env;
+  renderModulePills();
   saveFormState();
 }
 
@@ -1154,8 +1222,16 @@ function toggleTimeMode(field) {
 }
 
 function getCheckedModules() {
-  return [...document.querySelectorAll('#moduleArea .cb-pill input:checked')]
-    .map(c => c.value).join(', ');
+  const checked = Object.keys(moduleEnvs);
+  if (!checked.length) return '';
+  if (selectedDbs.length !== 2) return checked.join(', ');
+  // Both DBs — group by env assignment
+  const sqlMods  = checked.filter(m => moduleEnvs[m] === 'sql'  || moduleEnvs[m] === 'both');
+  const oraMods  = checked.filter(m => moduleEnvs[m] === 'ora'  || moduleEnvs[m] === 'both');
+  const parts = [];
+  if (sqlMods.length) parts.push(`SQL: ${sqlMods.join(', ')}`);
+  if (oraMods.length) parts.push(`ORA: ${oraMods.join(', ')}`);
+  return parts.join(' | ');
 }
 
 // ── Record management ────────────────────────────────────────────────
@@ -1207,6 +1283,7 @@ function clearForm() {
   );
   selectedDbs = [];
   ['sql','ora'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
+  moduleEnvs = {};
   selectedVers = [];
   ['15','15u'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
   clearFormStorage();
