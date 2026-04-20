@@ -692,10 +692,11 @@
       <div class="field">
         <label class="field-label">Environment(s) tested in</label>
         <div class="status-row">
-          <button class="status-btn" id="btn-alpha"   onclick="setSingle('env','alpha',  'Alpha')">Alpha</button>
-          <button class="status-btn" id="btn-beta"    onclick="setSingle('env','beta',   'Beta')">Beta</button>
-          <button class="status-btn" id="btn-release" onclick="setSingle('env','release','Release')">Release</button>
+          <button class="status-btn" id="btn-alpha"   onclick="toggleEnv('alpha',  'Alpha')">Alpha</button>
+          <button class="status-btn" id="btn-beta"    onclick="toggleEnv('beta',   'Beta')">Beta</button>
+          <button class="status-btn" id="btn-release" onclick="toggleEnv('release','Release')">Release</button>
         </div>
+        <div id="envEnvRow" style="display:none; margin-top:6px;"></div>
       </div>
 
       <div class="field">
@@ -804,12 +805,13 @@ const MODULE_MAP = {
 // ── App state ────────────────────────────────────────────────────────
 let records      = [];
 let selectedStatus = '';
-let selectedEnv    = '';
+let selectedEnvs   = [];   // multi-select: 'Alpha', 'Beta', 'Release'
 let selectedDbs    = [];   // multi-select: 'SQL', 'ORA', or both
 let selectedVers   = [];   // multi-select: '15', '15U', or both
 let sidebarFmt     = 'hm'; // 'hm' | 'dec'
 let moduleEnvs         = {}; // { moduleName: 'sql'|'ora'|'both' } — only used when both DBs selected
 let verEnvs            = {}; // { '15': 'sql'|'ora'|'both', '15U': ... } — only when both DBs + both vers
+let envEnvs            = {}; // { 'Alpha': 'sql'|'ora'|'both', ... } — when both DBs + 2+ envs selected
 let editingIndex       = null;
 let editingShowStatus  = false;  // whether Yes was clicked on status question
 let editingNewStatus   = '';     // newly selected status (empty = keep original)
@@ -962,7 +964,8 @@ function saveFormState() {
       timeRemaining:  document.getElementById('timeRemaining').value,
       notes:          document.getElementById('notes').value,
       selectedStatus,
-      selectedEnv,
+      selectedEnvs,
+      envEnvs,
       selectedDbs,
       selectedVers,
       verEnvs,
@@ -1003,12 +1006,22 @@ function restoreFormState() {
       }
     }
 
-    // Environment button
-    if (s.selectedEnv) {
-      selectedEnv = s.selectedEnv;
-      const envKey = { 'Alpha':'alpha', 'Beta':'beta', 'Release':'release' }[s.selectedEnv];
-      if (envKey) document.getElementById('btn-' + envKey).classList.add('active-completed');
+    // Environment buttons (multi-select)
+    const envKeyMap = { 'Alpha':'alpha', 'Beta':'beta', 'Release':'release' };
+    if (s.selectedEnvs && s.selectedEnvs.length) {
+      selectedEnvs = s.selectedEnvs;
+      selectedEnvs.forEach(env => {
+        const k = envKeyMap[env];
+        if (k) document.getElementById('btn-' + k).classList.add('active-completed');
+      });
+    } else if (s.selectedEnv) {
+      // Legacy: single string → migrate to array
+      selectedEnvs = [s.selectedEnv];
+      const k = envKeyMap[s.selectedEnv];
+      if (k) document.getElementById('btn-' + k).classList.add('active-completed');
     }
+    if (s.envEnvs) envEnvs = s.envEnvs;
+    renderEnvEnvRow();
 
     // DB buttons (multi-select)
     if (s.selectedDbs && s.selectedDbs.length) {
@@ -1240,6 +1253,71 @@ function setSingle(group, key, label) {
   saveFormState();
 }
 
+function toggleEnv(key, label) {
+  const idx = selectedEnvs.indexOf(label);
+  if (idx === -1) {
+    selectedEnvs.push(label);
+    document.getElementById('btn-'+key).classList.add('active-completed');
+  } else {
+    selectedEnvs.splice(idx, 1);
+    document.getElementById('btn-'+key).classList.remove('active-completed');
+    delete envEnvs[label];
+  }
+  renderEnvEnvRow();
+  renderModulePills(); // re-evaluate DYN modules
+  saveFormState();
+}
+
+function renderEnvEnvRow() {
+  const row = document.getElementById('envEnvRow');
+  if (!row) return;
+  const showEnvs = selectedDbs.length === 2 && selectedEnvs.length >= 2;
+
+  if (!showEnvs) {
+    row.style.display = 'none';
+    envEnvs = {};
+    // Reset env buttons back to plain active-completed (no color class)
+    const keyMap = { 'Alpha':'alpha', 'Beta':'beta', 'Release':'release' };
+    selectedEnvs.forEach(env => {
+      const btn = document.getElementById('btn-' + keyMap[env]);
+      if (btn) btn.className = 'status-btn active-completed';
+    });
+    return;
+  }
+
+  // Set defaults for any newly selected env
+  selectedEnvs.forEach(env => {
+    if (!envEnvs[env]) envEnvs[env] = 'both';
+  });
+
+  // Apply color to each active env button
+  const keyMap = { 'Alpha':'alpha', 'Beta':'beta', 'Release':'release' };
+  selectedEnvs.forEach(env => {
+    const btn = document.getElementById('btn-' + keyMap[env]);
+    if (btn) btn.className = `status-btn ver-env-${envEnvs[env]}`;
+  });
+
+  row.style.display = '';
+  row.innerHTML = selectedEnvs.map(env => {
+    const db = envEnvs[env] || 'both';
+    return `<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;">
+      <span style="font-size:12px;font-weight:600;min-width:48px;">${env}</span>
+      <span class="pill-env-row" onclick="event.stopPropagation()">
+        <button class="pill-env-btn${db==='sql' ?' pill-env-active':''}" onclick="setEnvEnv('${env}','sql')">SQL</button>
+        <button class="pill-env-btn${db==='both'?' pill-env-active':''}" onclick="setEnvEnv('${env}','both')">Both</button>
+        <button class="pill-env-btn${db==='ora' ?' pill-env-active':''}" onclick="setEnvEnv('${env}','ora')">ORA</button>
+      </span>
+    </div>`;
+  }).join('');
+}
+
+function setEnvEnv(env, db) {
+  envEnvs[env] = db;
+  renderEnvEnvRow();
+  renderModulePills(); // re-evaluate DYN conditional modules
+  saveFormState();
+}
+
 function toggleDb(key, label) {
   const idx = selectedDbs.indexOf(label);
   if (idx === -1) {
@@ -1251,6 +1329,7 @@ function toggleDb(key, label) {
   }
   renderModulePills(); // re-render so env selectors appear/disappear
   renderVerEnvRow();
+  renderEnvEnvRow();
   saveFormState();
 }
 
@@ -1322,6 +1401,27 @@ function getPrefix(val) {
   return Object.prototype.hasOwnProperty.call(MODULE_MAP, part) ? part : null;
 }
 
+// ── Conditional DYN module list ──────────────────────────────────────
+function getDynModules() {
+  const base = ['QAE','QAS','EM','PAM','RO','Subawards'];
+  // Conditions require all 3 envs selected + both DBs + explicit per-env DB assignments
+  const allEnvs = selectedEnvs.includes('Alpha') && selectedEnvs.includes('Beta') && selectedEnvs.includes('Release');
+  if (allEnvs && selectedDbs.length === 2) {
+    const a = envEnvs['Alpha'];
+    const b = envEnvs['Beta'];
+    const r = envEnvs['Release'];
+    if (a === 'sql' && b === 'ora' && r === 'sql') {
+      // Condition 1: show DYN base + AFM (Subawards already in base)
+      return [...base, 'AFM'];
+    }
+    if (a === 'ora' && b === 'sql' && r === 'ora') {
+      // Condition 2: hide DYN base, show FM, FT, AWD, AFM
+      return ['FM', 'FT', 'AWD', 'AFM'];
+    }
+  }
+  return base;
+}
+
 function updateModules() {
   const prefix = getPrefix(document.getElementById('taskNum').value);
   const area   = document.getElementById('moduleArea');
@@ -1332,7 +1432,8 @@ function updateModules() {
     return;
   }
   // Keep only env entries for modules that still exist in this prefix
-  const valid = new Set(MODULE_MAP[prefix]);
+  const modules = prefix === 'dyn' ? getDynModules() : MODULE_MAP[prefix];
+  const valid = new Set(modules);
   Object.keys(moduleEnvs).forEach(k => { if (!valid.has(k)) delete moduleEnvs[k]; });
   renderModulePills();
   saveFormState();
@@ -1343,7 +1444,8 @@ function renderModulePills() {
   if (!prefix) return;
   const bothDbs = selectedDbs.length === 2;
   const area = document.getElementById('moduleArea');
-  area.innerHTML = MODULE_MAP[prefix].map(m => {
+  const modules = prefix === 'dyn' ? getDynModules() : MODULE_MAP[prefix];
+  area.innerHTML = modules.map(m => {
     const isChecked = Object.prototype.hasOwnProperty.call(moduleEnvs, m);
     const env = moduleEnvs[m] || 'both';
     const envRow = (isChecked && bothDbs) ? `
@@ -1465,7 +1567,7 @@ function submitEntry() {
   records.push({
     'Task Number':          task,
     'Task Description':     document.getElementById('taskDesc').value.trim(),
-    'Environment(s)':       selectedEnv || '—',
+    'Environment(s)':       selectedEnvs.length ? selectedEnvs.join('/') : '—',
     'SQL or ORA':           selectedDbs.length ? selectedDbs.join('/') : '—',
     '15 or 15U':            getVersValue(),
     'Modules Tested':       getCheckedModules() || '—',
@@ -1499,10 +1601,12 @@ function clearForm() {
   ['completed','sentback','paused'].forEach(k =>
     document.getElementById('btn-'+k).className = 'status-btn'
   );
-  selectedEnv = '';
+  selectedEnvs = [];
+  envEnvs = {};
   ['alpha','beta','release'].forEach(k =>
     document.getElementById('btn-'+k).className = 'status-btn'
   );
+  renderEnvEnvRow();
   selectedDbs = [];
   ['sql','ora'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
   moduleEnvs = {};
