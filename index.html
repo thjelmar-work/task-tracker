@@ -681,7 +681,8 @@
     <div class="card">
       <div class="field">
         <label class="field-label" for="taskNum">Task number</label>
-        <input type="text" id="taskNum" placeholder="e.g. PRE-001, DYN-045, TT-12..." oninput="updateModules()">
+        <input type="text" id="taskNum" placeholder="e.g. DYN-1234-567" oninput="updateModules()">
+        <span style="font-size:11px;color:var(--text-hint);margin-top:3px;display:block;">Format: ABCD-0000-000</span>
       </div>
 
       <div class="field">
@@ -707,7 +708,7 @@
         </div>
       </div>
 
-      <div class="field">
+      <div class="field" id="verField">
         <label class="field-label">15 or 15U?</label>
         <div class="status-row">
           <button class="status-btn" id="btn-15"  onclick="toggleVer('15', '15')">15</button>
@@ -811,6 +812,7 @@ let selectedDbs    = [];   // multi-select: 'SQL', 'ORA', or both
 let selectedVers   = [];   // multi-select: '15', '15U', or both
 let sidebarFmt     = 'hm'; // 'hm' | 'dec'
 let moduleEnvs         = {}; // { moduleName: 'sql'|'ora'|'both' } — only used when both DBs selected
+let moduleVers         = {}; // { moduleName: '15'|'15u'|'both' } — only when both versions selected
 let verEnvs            = {}; // { '15': 'sql'|'ora'|'both', '15U': ... } — only when both DBs + both vers
 let editingIndex       = null;
 let editingShowStatus  = false;  // whether Yes was clicked on status question
@@ -969,7 +971,8 @@ function saveFormState() {
       selectedVers,
       verEnvs,
       timeModes,
-      moduleEnvs
+      moduleEnvs,
+      moduleVers
     };
     localStorage.setItem(FORM_KEY, JSON.stringify(state));
   } catch(_) {}
@@ -1023,8 +1026,8 @@ function restoreFormState() {
     // DB buttons (multi-select)
     if (s.selectedDbs && s.selectedDbs.length) {
       selectedDbs = s.selectedDbs;
-      if (selectedDbs.includes('SQL')) document.getElementById('btn-sql').classList.add('active-completed');
-      if (selectedDbs.includes('ORA')) document.getElementById('btn-ora').classList.add('active-completed');
+      if (selectedDbs.includes('SQL')) document.getElementById('btn-sql').className = 'status-btn active-completed';
+      if (selectedDbs.includes('ORA')) document.getElementById('btn-ora').className = 'status-btn ver-env-ora';
     }
 
     // Version buttons (multi-select)
@@ -1035,13 +1038,14 @@ function restoreFormState() {
     }
     if (s.verEnvs) verEnvs = s.verEnvs;
     renderVerEnvRow();
-
+  
     // Status button
     if (s.selectedStatus) setStatus(s.selectedStatus);
 
     // Module pills — restore env assignments then re-render
     if (s.taskNum) {
       if (s.moduleEnvs) moduleEnvs = s.moduleEnvs;
+      if (s.moduleVers) moduleVers = s.moduleVers;
       // legacy: if old save had checkedModules array, migrate to moduleEnvs
       else if (s.checkedModules && s.checkedModules.length) {
         s.checkedModules.forEach(v => { moduleEnvs[v] = 'both'; });
@@ -1264,16 +1268,19 @@ function toggleEnv(key, label) {
   saveFormState();
 }
 
+
 function toggleDb(key, label) {
   const idx = selectedDbs.indexOf(label);
   if (idx === -1) {
     selectedDbs.push(label);
-    document.getElementById('btn-'+key).classList.add('active-completed');
+    // ORA gets purple to match its mini-button color; SQL keeps standard active color
+    document.getElementById('btn-'+key).className =
+      label === 'ORA' ? 'status-btn ver-env-ora' : 'status-btn active-completed';
   } else {
     selectedDbs.splice(idx, 1);
-    document.getElementById('btn-'+key).classList.remove('active-completed');
+    document.getElementById('btn-'+key).className = 'status-btn';
   }
-  renderModulePills(); // re-render so env selectors appear/disappear
+  renderModulePills();
   renderVerEnvRow();
   saveFormState();
 }
@@ -1407,11 +1414,13 @@ function renderModulePills() {
   // Prune any checked modules that no longer appear in the current list
   const validSet = new Set(modules);
   Object.keys(moduleEnvs).forEach(k => { if (!validSet.has(k)) delete moduleEnvs[k]; });
+  Object.keys(moduleVers).forEach(k => { if (!validSet.has(k)) delete moduleVers[k]; });
   // For ENT tasks with both DBs:
   //   ENT_BASE modules  → SQL/ORA/Both mini buttons (user-assigned)
   //   DYN modules       → no mini buttons; auto-colored by condition mapping:
   //                        Alpha→SQL(green), Beta→ORA(purple), Release→SQL(green)
   // For all other prefixes: all modules get mini buttons when both DBs selected
+  const bothVers  = selectedVers.includes('15') && selectedVers.includes('15U');
   const entBaseSet = prefix === 'ent' ? new Set(ENT_BASE) : null;
   // Condition 1 env→DB mapping used for ENT DYN auto-color
   const ENT_DYN_ENV_MAP = { 'Vetting': 'sql', 'Alpha': 'sql', 'Beta': 'ora', 'Release': 'sql' };
@@ -1421,11 +1430,18 @@ function renderModulePills() {
     const isEntDyn     = entBaseSet !== null && !entBaseSet.has(m);
     const canAttribute = bothDbs && (entBaseSet ? entBaseSet.has(m) : true);
     const env          = isEntDyn ? dynAutoEnv : (moduleEnvs[m] || 'both');
+    const ver          = moduleVers[m] || 'both';
     const envRow = (isChecked && canAttribute) ? `
       <span class="pill-env-row" onclick="event.stopPropagation()">
         <button class="pill-env-btn${env==='sql' ?' pill-env-active':''}" onclick="setModuleEnv('${m}','sql', event)">SQL</button>
         <button class="pill-env-btn${env==='both'?' pill-env-active':''}" onclick="setModuleEnv('${m}','both',event)">Both</button>
         <button class="pill-env-btn${env==='ora' ?' pill-env-active':''}" onclick="setModuleEnv('${m}','ora', event)">ORA</button>
+      </span>` : '';
+    const verRow = (isChecked && bothVers && !bothDbs) ? `
+      <span class="pill-env-row" onclick="event.stopPropagation()">
+        <button class="pill-env-btn${ver==='15'  ?' pill-env-active':''}" onclick="setModuleVer('${m}','15',  event)">15</button>
+        <button class="pill-env-btn${ver==='both'?' pill-env-active':''}" onclick="setModuleVer('${m}','both',event)">Both</button>
+        <button class="pill-env-btn${ver==='15u' ?' pill-env-active':''}" onclick="setModuleVer('${m}','15u', event)">15U</button>
       </span>` : '';
     // ENT DYN modules: auto-colored when checked + both DBs; no mini buttons
     const pillClass = isChecked
@@ -1434,7 +1450,7 @@ function renderModulePills() {
           : (isEntDyn && bothDbs ? `checked env-${dynAutoEnv}` : 'checked'))
       : '';
     return `<label class="cb-pill ${pillClass}" onclick="togglePill(this)">
-      <input type="checkbox" value="${m}"${isChecked?' checked':''}>${m}${envRow}
+      <input type="checkbox" value="${m}"${isChecked?' checked':''}>${m}${envRow}${verRow}
     </label>`;
   }).join('');
 }
@@ -1446,7 +1462,7 @@ function togglePill(el) {
   el.classList.toggle('checked', cb.checked);
   const modName = cb.value;
   if (cb.checked) { if (!moduleEnvs[modName]) moduleEnvs[modName] = 'both'; }
-  else            { delete moduleEnvs[modName]; }
+  else            { delete moduleEnvs[modName]; delete moduleVers[modName]; }
   renderModulePills();
   saveFormState();
 }
@@ -1454,6 +1470,13 @@ function togglePill(el) {
 function setModuleEnv(modName, env, event) {
   event.stopPropagation();
   moduleEnvs[modName] = env;
+  renderModulePills();
+  saveFormState();
+}
+
+function setModuleVer(modName, ver, event) {
+  event.stopPropagation();
+  moduleVers[modName] = ver;
   renderModulePills();
   saveFormState();
 }
@@ -1510,15 +1533,27 @@ function toggleTimeMode(field) {
 }
 
 function getCheckedModules() {
-  const checked = Object.keys(moduleEnvs);
+  const checked   = Object.keys(moduleEnvs);
   if (!checked.length) return '';
-  if (selectedDbs.length !== 2) return checked.join(', ');
-  // Both DBs — group by env assignment
-  const sqlMods  = checked.filter(m => moduleEnvs[m] === 'sql'  || moduleEnvs[m] === 'both');
-  const oraMods  = checked.filter(m => moduleEnvs[m] === 'ora'  || moduleEnvs[m] === 'both');
+  const bothDbs_  = selectedDbs.length === 2;
+  const bothVers_ = selectedVers.includes('15') && selectedVers.includes('15U');
   const parts = [];
-  if (sqlMods.length) parts.push(`SQL: ${sqlMods.join(', ')}`);
-  if (oraMods.length) parts.push(`ORA: ${oraMods.join(', ')}`);
+
+  if (bothDbs_) {
+    const sqlMods = checked.filter(m => moduleEnvs[m] === 'sql' || moduleEnvs[m] === 'both');
+    const oraMods = checked.filter(m => moduleEnvs[m] === 'ora' || moduleEnvs[m] === 'both');
+    if (sqlMods.length) parts.push(`SQL: ${sqlMods.join(', ')}`);
+    if (oraMods.length) parts.push(`ORA: ${oraMods.join(', ')}`);
+  }
+
+  if (bothVers_) {
+    const mods15  = checked.filter(m => (moduleVers[m] || 'both') === '15'  || (moduleVers[m] || 'both') === 'both');
+    const mods15u = checked.filter(m => (moduleVers[m] || 'both') === '15u' || (moduleVers[m] || 'both') === 'both');
+    if (mods15.length)  parts.push(`15: ${mods15.join(', ')}`);
+    if (mods15u.length) parts.push(`15U: ${mods15u.join(', ')}`);
+  }
+
+  if (!parts.length) return checked.join(', ');
   return parts.join(' | ');
 }
 
@@ -1539,8 +1574,12 @@ function getVersValue() {
 
 function submitEntry() {
   const task = document.getElementById('taskNum').value.trim();
-  if (!task)           { showToast('Please enter a task number.'); return; }
-  if (!selectedStatus) { showToast('Please select a status.');     return; }
+  if (!task) { showToast('Please enter a task number.'); return; }
+  if (!/^[A-Za-z]{2,4}-\d{4}-\d{3}$/.test(task)) {
+    showToast('Task number must match format: ABCD-0000-000 (e.g. DYN-1234-567)');
+    return;
+  }
+  if (!selectedStatus) { showToast('Please select a status.'); return; }
 
   records.push({
     'Task Number':          task,
@@ -1586,6 +1625,7 @@ function clearForm() {
   selectedDbs = [];
   ['sql','ora'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
   moduleEnvs = {};
+  moduleVers = {};
   selectedVers = [];
   verEnvs = {};
   ['15','15u'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
