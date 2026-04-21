@@ -692,6 +692,7 @@
       <div class="field">
         <label class="field-label">Environment(s) tested in</label>
         <div class="status-row">
+          <button class="status-btn" id="btn-vetting" onclick="toggleEnv('vetting','Vetting')">Vetting</button>
           <button class="status-btn" id="btn-alpha"   onclick="toggleEnv('alpha',  'Alpha')">Alpha</button>
           <button class="status-btn" id="btn-beta"    onclick="toggleEnv('beta',   'Beta')">Beta</button>
           <button class="status-btn" id="btn-release" onclick="toggleEnv('release','Release')">Release</button>
@@ -1005,7 +1006,7 @@ function restoreFormState() {
     }
 
     // Environment buttons (multi-select)
-    const envKeyMap = { 'Alpha':'alpha', 'Beta':'beta', 'Release':'release' };
+    const envKeyMap = { 'Vetting':'vetting', 'Alpha':'alpha', 'Beta':'beta', 'Release':'release' };
     if (s.selectedEnvs && s.selectedEnvs.length) {
       selectedEnvs = s.selectedEnvs;
       selectedEnvs.forEach(env => {
@@ -1253,7 +1254,7 @@ function toggleEnv(key, label) {
   const alreadySelected = selectedEnvs.includes(label);
   // Clear all env buttons first (single-select)
   selectedEnvs = [];
-  ['alpha','beta','release'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
+  ['vetting','alpha','beta','release'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
   // Toggle on if it wasn't already selected
   if (!alreadySelected) {
     selectedEnvs.push(label);
@@ -1361,8 +1362,9 @@ function getDynModules() {
   const oraOnly = selectedDbs.length === 1 && selectedDbs.includes('ORA');
   const sqlOnly = selectedDbs.length === 1 && selectedDbs.includes('SQL');
 
-  // Condition 2: Alpha+ORA, Beta+SQL, Release+ORA → FM, FT, AWD, AFM
-  if ((env === 'Alpha'   && oraOnly) ||
+  // Condition 2: Vetting+ORA, Alpha+ORA, Beta+SQL, Release+ORA → FM, FT, AWD, AFM
+  if ((env === 'Vetting' && oraOnly) ||
+      (env === 'Alpha'   && oraOnly) ||
       (env === 'Beta'    && sqlOnly) ||
       (env === 'Release' && oraOnly)) {
     return ['FM', 'FT', 'AWD', 'AFM'];
@@ -1412,7 +1414,7 @@ function renderModulePills() {
   // For all other prefixes: all modules get mini buttons when both DBs selected
   const entBaseSet = prefix === 'ent' ? new Set(ENT_BASE) : null;
   // Condition 1 env→DB mapping used for ENT DYN auto-color
-  const ENT_DYN_ENV_MAP = { 'Alpha': 'sql', 'Beta': 'ora', 'Release': 'sql' };
+  const ENT_DYN_ENV_MAP = { 'Vetting': 'sql', 'Alpha': 'sql', 'Beta': 'ora', 'Release': 'sql' };
   const dynAutoEnv = ENT_DYN_ENV_MAP[selectedEnvs[0]] || 'both';
   area.innerHTML = modules.map(m => {
     const isChecked    = Object.prototype.hasOwnProperty.call(moduleEnvs, m);
@@ -1578,7 +1580,7 @@ function clearForm() {
     document.getElementById('btn-'+k).className = 'status-btn'
   );
   selectedEnvs = [];
-  ['alpha','beta','release'].forEach(k =>
+  ['vetting','alpha','beta','release'].forEach(k =>
     document.getElementById('btn-'+k).className = 'status-btn'
   );
   selectedDbs = [];
