@@ -1460,19 +1460,21 @@ function renderModulePills() {
   Object.keys(moduleEnvs).forEach(k => { if (!validSet.has(k)) delete moduleEnvs[k]; });
   Object.keys(moduleVers).forEach(k => { if (!validSet.has(k)) delete moduleVers[k]; });
   // For ENT tasks with both DBs:
-  //   ENT_BASE modules  → SQL/ORA/Both mini buttons (user-assigned)
-  //   DYN modules       → no mini buttons; auto-colored by condition mapping:
+  //   ENT_BASE modules + always-manual modules → SQL/ORA/Both mini buttons (user-assigned)
+  //   Other DYN modules → no mini buttons; auto-colored by condition mapping:
   //                        Alpha→SQL(green), Beta→ORA(purple), Release→SQL(green)
   // For all other prefixes: all modules get mini buttons when both DBs selected
   const bothVers  = selectedVers.includes('15') && selectedVers.includes('15U');
   const entBaseSet = prefix === 'ent' ? new Set(ENT_BASE) : null;
+  // Modules that always show SQL/ORA/Both mini-buttons regardless of ENT DYN auto-color
+  const ALWAYS_MANUAL = new Set(['QAE','QAS','RO']);
   // Condition 1 env→DB mapping used for ENT DYN auto-color
   const ENT_DYN_ENV_MAP = { 'Vetting': 'sql', 'Alpha': 'sql', 'Beta': 'ora', 'Release': 'sql' };
   const dynAutoEnv = ENT_DYN_ENV_MAP[selectedEnvs[0]] || 'both';
   area.innerHTML = modules.map(m => {
     const isChecked    = Object.prototype.hasOwnProperty.call(moduleEnvs, m);
-    const isEntDyn     = entBaseSet !== null && !entBaseSet.has(m);
-    const canAttribute = bothDbs && (entBaseSet ? entBaseSet.has(m) : true);
+    const isEntDyn     = entBaseSet !== null && !entBaseSet.has(m) && !ALWAYS_MANUAL.has(m);
+    const canAttribute = bothDbs && (entBaseSet ? (entBaseSet.has(m) || ALWAYS_MANUAL.has(m)) : true);
     const env          = isEntDyn ? dynAutoEnv : (moduleEnvs[m] || 'both');
     const ver          = moduleVers[m] || 'both';
     const envRow = (isChecked && canAttribute) ? `
