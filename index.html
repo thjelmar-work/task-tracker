@@ -831,7 +831,7 @@ const MODULE_MAP = {
   pre:  ['PD/PT'],
   post: ['PD/PT'],
   comp: ['HS','LA','EHS'],
-  dyn:  ['QAE','QAS','EM','PAM','RO'],
+  dyn:  ['QAE','QAS','EM','PAM','RO','Subawards'],
   coi:  ['COI'],
   tt:   ['TTA','TTC','TTD','TTK','TTF','TTO']
 };
@@ -1398,22 +1398,23 @@ function getModulesForPrefix(prefix) {
 
 // ── DYN module list ───────────────────────────────────────────────────
 // Default: base modules (shown for all conditions incl. both DBs selected)
-// Condition 2 (Alpha=ORA, Beta=SQL, Release=ORA) → swaps to FM, FT, AWD, AFM
+// Condition 2 (Vetting+ORA, Alpha+ORA, Beta+SQL, Release+ORA) → swaps to AFM/FM, FT, AWD
 function getDynModules() {
-  const base    = ['QAE','QAS','EM','PAM','RO','Subawards','AFM'];
+  const base    = ['QAE','QAS','EM','PAM','RO','Subawards'];
   const env     = selectedEnvs[0];
   const oraOnly = selectedDbs.length === 1 && selectedDbs.includes('ORA');
   const sqlOnly = selectedDbs.length === 1 && selectedDbs.includes('SQL');
 
-  // Condition 2: Vetting+ORA, Alpha+ORA, Beta+SQL, Release+ORA → FM, FT, AWD, AFM
+  // Condition 2: Vetting+ORA, Alpha+ORA, Beta+SQL, Release+ORA → QAE/QAS always + FT, AWD
   if ((env === 'Vetting' && oraOnly) ||
       (env === 'Alpha'   && oraOnly) ||
       (env === 'Beta'    && sqlOnly) ||
       (env === 'Release' && oraOnly)) {
-    return ['FM', 'FT', 'AWD', 'AFM'];
+    return ['QAE','QAS','RO','FT','AWD'];
   }
   return base;
 }
+
 
 let _resumeCheckTimer = null;
 function updateModules() {
