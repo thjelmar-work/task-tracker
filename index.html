@@ -424,6 +424,22 @@
   .time-row { display: flex; gap: 8px; align-items: center; }
   .time-row input { flex: 1; }
 
+  .time-qual-select {
+    font-size: 16px;
+    padding: 6px 8px;
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+    flex-shrink: 0;
+    width: 54px;
+    text-align: center;
+  }
+  .time-qual-select:hover { background: var(--bg); }
+
   .time-toggle {
     font-size: 12px;
     padding: 7px 12px;
@@ -744,6 +760,12 @@
       <div class="field">
         <label class="field-label" for="timeRemaining">Remaining testing time (est)</label>
         <div class="time-row">
+          <select id="timeRemainingQual" onchange="saveFormState()" class="time-qual-select">
+            <option value="">—</option>
+            <option value="gte">≥</option>
+            <option value="lte">≤</option>
+            <option value="about">≈</option>
+          </select>
           <input type="text" id="timeRemaining" placeholder="e.g. 0hr 45min" onblur="validateTimeField('timeRemaining','remaining')">
           <button class="time-toggle" onclick="toggleTimeMode('remaining')" id="timeRemModeBtn">Switch to decimal (hrs)</button>
         </div>
@@ -784,6 +806,18 @@
     <div class="modal-btns">
       <button class="modal-yes" onclick="doReset()">Yes, reset</button>
       <button class="modal-no"  onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Resume paused task modal -->
+<div class="overlay" id="resumeOverlay">
+  <div class="modal">
+    <h2>Resume paused task?</h2>
+    <p id="resumeMsg">A previous paused entry was found for this task. Would you like to pre-fill the form with that information?</p>
+    <div class="modal-btns">
+      <button class="modal-yes" style="background:var(--green-bg);border-color:var(--green-border);color:var(--green-text);" onclick="doResume()">Yes, resume</button>
+      <button class="modal-no"  onclick="closeResumeModal()">No thanks</button>
     </div>
   </div>
 </div>
@@ -960,11 +994,12 @@ async function updateMasterLogCount() {
 function saveFormState() {
   try {
     const state = {
-      taskNum:        document.getElementById('taskNum').value,
-      taskDesc:       document.getElementById('taskDesc').value,
-      timeInput:      document.getElementById('timeInput').value,
-      timeRemaining:  document.getElementById('timeRemaining').value,
-      notes:          document.getElementById('notes').value,
+      taskNum:           document.getElementById('taskNum').value,
+      taskDesc:          document.getElementById('taskDesc').value,
+      timeInput:         document.getElementById('timeInput').value,
+      timeRemaining:     document.getElementById('timeRemaining').value,
+      timeRemainingQual: document.getElementById('timeRemainingQual').value,
+      notes:             document.getElementById('notes').value,
       selectedStatus,
       selectedEnvs,
       selectedDbs,
@@ -989,11 +1024,12 @@ function restoreFormState() {
     const s = JSON.parse(raw);
 
     // Text fields
-    if (s.taskNum)       document.getElementById('taskNum').value       = s.taskNum;
-    if (s.taskDesc)      document.getElementById('taskDesc').value      = s.taskDesc;
-    if (s.timeInput)     document.getElementById('timeInput').value     = s.timeInput;
-    if (s.timeRemaining) document.getElementById('timeRemaining').value = s.timeRemaining;
-    if (s.notes)         document.getElementById('notes').value         = s.notes;
+    if (s.taskNum)           document.getElementById('taskNum').value           = s.taskNum;
+    if (s.taskDesc)          document.getElementById('taskDesc').value          = s.taskDesc;
+    if (s.timeInput)         document.getElementById('timeInput').value         = s.timeInput;
+    if (s.timeRemaining)     document.getElementById('timeRemaining').value     = s.timeRemaining;
+    if (s.timeRemainingQual) document.getElementById('timeRemainingQual').value = s.timeRemainingQual;
+    if (s.notes)             document.getElementById('notes').value             = s.notes;
 
     // Time mode toggles
     if (s.timeModes) {
@@ -1379,14 +1415,21 @@ function getDynModules() {
   return base;
 }
 
+let _resumeCheckTimer = null;
 function updateModules() {
-  const prefix = getPrefix(document.getElementById('taskNum').value);
-  const area   = document.getElementById('moduleArea');
+  const taskVal = document.getElementById('taskNum').value;
+  const prefix  = getPrefix(taskVal);
+  const area    = document.getElementById('moduleArea');
   if (!prefix) {
     area.innerHTML = '<span class="no-modules">Enter a task number to see available modules</span>';
     moduleEnvs = {};
     saveFormState();
     return;
+  }
+  // Check for a paused entry once the full format is valid, debounced
+  if (/^[A-Za-z]{2,4}-\d{4}-\d{3}$/.test(taskVal.trim())) {
+    clearTimeout(_resumeCheckTimer);
+    _resumeCheckTimer = setTimeout(checkForPausedEntry, 400);
   }
   if (!selectedDbs.length) {
     area.innerHTML = '<span class="no-modules">Select SQL or ORA to see available modules</span>';
@@ -1589,7 +1632,13 @@ function submitEntry() {
     '15 or 15U':            getVersValue(),
     'Modules Tested':       getCheckedModules() || '—',
     'Time Tested':          document.getElementById('timeInput').value.trim() || '—',
-    'Remaining Time (est)': document.getElementById('timeRemaining').value.trim() || '—',
+    'Remaining Time (est)': (() => {
+        const val  = document.getElementById('timeRemaining').value.trim();
+        if (!val) return '—';
+        const qualMap = { gte: '≥', lte: '≤', about: '≈' };
+        const sym  = qualMap[document.getElementById('timeRemainingQual').value] || '';
+        return sym ? `${sym} ${val}` : val;
+      })(),
     'Status':               selectedStatus,
     'Notes':                document.getElementById('notes').value.trim()
   });
@@ -1605,8 +1654,9 @@ function clearForm() {
   document.getElementById('taskNum').value       = '';
   document.getElementById('taskDesc').value      = '';
   document.getElementById('timeInput').value     = '';
-  document.getElementById('timeRemaining').value = '';
-  document.getElementById('notes').value         = '';
+  document.getElementById('timeRemaining').value     = '';
+  document.getElementById('timeRemainingQual').value = '';
+  document.getElementById('notes').value             = '';
   timeModes = { tested: 'hm', remaining: 'hm' };
   document.getElementById('timeModeBtn').textContent    = 'Switch to decimal (hrs)';
   document.getElementById('timeRemModeBtn').textContent = 'Switch to decimal (hrs)';
@@ -1739,7 +1789,7 @@ async function exportExcel() {
 }
 
 async function downloadMasterLog() {
-  const log = loadMasterLog();
+  const log = await loadMasterLog();
   if (!log.length) { showToast('No master log records yet. Wrap up a day first.'); return; }
   const wb = await buildWorkbook(log, true);
   const date = new Date().toISOString().slice(0, 10);
@@ -1756,6 +1806,126 @@ function updateCount() {
 
 function confirmReset() { document.getElementById('overlay').classList.add('active'); }
 function closeModal()    { document.getElementById('overlay').classList.remove('active'); }
+
+// ── Resume paused task ───────────────────────────────────────────────
+let _pendingResumeRecord = null;
+
+async function checkForPausedEntry() {
+  const taskVal = document.getElementById('taskNum').value.trim();
+  if (!/^[A-Za-z]{2,4}-\d{4}-\d{3}$/.test(taskVal)) return;
+
+  const log = await loadMasterLog();
+  // Find the most recent paused entry for this task number (case-insensitive)
+  const match = [...log].reverse().find(r =>
+    (r['Task Number'] || '').trim().toUpperCase() === taskVal.toUpperCase() &&
+    r['Status'] === 'Paused'
+  );
+  if (!match) return;
+
+  _pendingResumeRecord = match;
+
+  // Build a readable summary for the modal
+  const lines = [
+    match['Task Description'] ? `Description: ${match['Task Description']}` : null,
+    match['Environment(s)']   && match['Environment(s)']   !== '—' ? `Environment: ${match['Environment(s)']}` : null,
+    match['SQL or ORA']       && match['SQL or ORA']       !== '—' ? `DB: ${match['SQL or ORA']}` : null,
+    match['15 or 15U']        && match['15 or 15U']        !== '—' ? `Version: ${match['15 or 15U']}` : null,
+    match['Modules Tested']   && match['Modules Tested']   !== '—' ? `Modules: ${match['Modules Tested']}` : null,
+    match['Log Date'] ? `Originally logged: ${match['Log Date']}` : null
+  ].filter(Boolean);
+
+  document.getElementById('resumeMsg').innerHTML =
+    `A paused entry was found for <strong>${match['Task Number']}</strong>. ` +
+    `Pre-fill the form with this data?<br><br>` +
+    lines.map(l => `<span style="display:block;font-size:12px;color:var(--text-muted)">${l}</span>`).join('');
+
+  document.getElementById('resumeOverlay').classList.add('active');
+}
+
+function closeResumeModal() {
+  document.getElementById('resumeOverlay').classList.remove('active');
+  _pendingResumeRecord = null;
+}
+
+function doResume() {
+  const r = _pendingResumeRecord;
+  closeResumeModal();
+  if (!r) return;
+
+  // -- Task description --
+  if (r['Task Description']) document.getElementById('taskDesc').value = r['Task Description'];
+
+  // -- Environment (single-select) --
+  const env = (r['Environment(s)'] || '').split('/')[0].trim();
+  selectedEnvs = [];
+  ['vetting','alpha','beta','release'].forEach(k =>
+    document.getElementById('btn-'+k).className = 'status-btn');
+  const envKeyMap = { 'Vetting':'vetting','Alpha':'alpha','Beta':'beta','Release':'release' };
+  if (envKeyMap[env]) {
+    selectedEnvs = [env];
+    document.getElementById('btn-'+envKeyMap[env]).classList.add('active-completed');
+  }
+
+  // -- SQL / ORA --
+  selectedDbs = [];
+  document.getElementById('btn-sql').className = 'status-btn';
+  document.getElementById('btn-ora').className = 'status-btn';
+  const dbStr = r['SQL or ORA'] || '';
+  if (dbStr !== '—') {
+    if (dbStr.includes('SQL')) { selectedDbs.push('SQL'); document.getElementById('btn-sql').className = 'status-btn active-completed'; }
+    if (dbStr.includes('ORA')) { selectedDbs.push('ORA'); document.getElementById('btn-ora').className = 'status-btn ver-env-ora'; }
+  }
+
+  // -- 15 / 15U (parse from stored value, ignoring SQL:/ORA: prefixes) --
+  selectedVers = [];
+  verEnvs = {};
+  document.getElementById('btn-15').className  = 'status-btn';
+  document.getElementById('btn-15u').className = 'status-btn';
+  const versRaw = r['15 or 15U'] || '';
+  if (versRaw !== '—') {
+    // Could be "15/15U", "SQL: 15 | ORA: 15U", etc. — just look for '15U' and '15'
+    if (versRaw.includes('15U')) { selectedVers.push('15U'); document.getElementById('btn-15u').className = 'status-btn active-completed'; }
+    if (/\b15\b/.test(versRaw))  { selectedVers.push('15');  document.getElementById('btn-15').className  = 'status-btn active-completed'; }
+    // Attempt to restore verEnvs from "SQL: 15 | ORA: 15U" style
+    const sqlVers = (versRaw.match(/SQL:\s*([^|]+)/i) || [])[1];
+    const oraVers = (versRaw.match(/ORA:\s*([^|]+)/i) || [])[1];
+    if (sqlVers && oraVers) {
+      ['15','15U'].forEach(v => {
+        if (sqlVers.includes(v)) verEnvs[v] = 'sql';
+        if (oraVers.includes(v)) verEnvs[v] = 'ora';
+      });
+    }
+  }
+
+
+  // -- Notes --
+  if (r['Notes']) document.getElementById('notes').value = r['Notes'];
+
+  // -- Modules: parse comma-separated names back into checked state --
+  // moduleEnvs keys are checked module names; restore best-effort from stored string
+  moduleEnvs = {};
+  const modRaw = r['Modules Tested'] || '';
+  if (modRaw && modRaw !== '—') {
+    // Format can be "SQL: A, B | ORA: C" or plain "A, B, C"
+    const sqlPart = (modRaw.match(/SQL:\s*([^|]+)/i) || [])[1];
+    const oraPart = (modRaw.match(/ORA:\s*([^|]+)/i) || [])[1];
+    if (sqlPart || oraPart) {
+      (sqlPart || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => moduleEnvs[m] = 'sql');
+      (oraPart || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => {
+        moduleEnvs[m] = moduleEnvs[m] === 'sql' ? 'both' : 'ora';
+      });
+    } else {
+      modRaw.split(',').map(s => s.trim()).filter(Boolean).forEach(m => { moduleEnvs[m] = 'both'; });
+    }
+  }
+
+  // Re-render everything
+  renderVerEnvRow();
+  updateModules(); // triggers renderModulePills if prefix+db are set
+  clearTimeout(_resumeCheckTimer); // prevent the re-triggered debounce from re-showing the popup
+  saveFormState();
+  showToast('Form pre-filled from paused entry. Log it when ready!');
+}
 
 function doReset() {
   records = [];
