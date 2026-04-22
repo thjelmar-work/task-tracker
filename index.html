@@ -547,6 +547,59 @@
 
   .divider { border: none; border-top: 0.5px solid var(--border); margin: 1.25rem 0; }
 
+  /* Non-task mode */
+  .nontask-bar {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+  }
+  .nontask-bar select {
+    flex: 1; min-width: 160px;
+    padding: 8px 10px;
+    background: var(--surface2); color: var(--text);
+    border: 0.5px solid var(--border-med); border-radius: 8px;
+    font-family: inherit; font-size: 13px; cursor: pointer;
+  }
+  .btn-nontask {
+    padding: 8px 16px; border-radius: 8px; border: 0.5px solid var(--amber-border);
+    background: var(--amber-bg); color: var(--amber-text);
+    font-size: 13px; font-family: inherit; cursor: pointer; white-space: nowrap;
+    transition: opacity 0.15s;
+  }
+  .btn-nontask:hover { opacity: 0.8; }
+  .btn-nontask-cancel {
+    padding: 8px 14px; border-radius: 8px; border: 0.5px solid var(--border-med);
+    background: var(--surface2); color: var(--text-muted);
+    font-size: 13px; font-family: inherit; cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .btn-nontask-cancel:hover { color: var(--red-text); border-color: var(--red-border); }
+  #nontaskOtherInput {
+    padding: 8px 10px; background: var(--surface2); color: var(--text);
+    border: 0.5px solid var(--border-med); border-radius: 8px;
+    font-family: inherit; font-size: 13px;
+  }
+  .form-locked {
+    opacity: 0.22;
+    pointer-events: none;
+    user-select: none;
+    filter: grayscale(40%);
+    transition: opacity 0.2s, filter 0.2s;
+  }
+  /* Unlocked fields glow when non-task mode is active */
+  .nontask-active .field:not(.form-locked) input,
+  .nontask-active .field:not(.form-locked) textarea,
+  .nontask-active .field:not(.form-locked) select {
+    background: var(--amber-bg);
+    border-color: var(--amber-border);
+  }
+  .nontask-active .field:not(.form-locked) .field-label {
+    color: var(--amber-text);
+    font-weight: 600;
+  }
+  .nontask-active .field:not(.form-locked) .time-toggle {
+    border-color: var(--amber-border);
+  }
+
   .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
 
   .btn {
@@ -694,60 +747,80 @@
       <p>Log test tasks and export to Excel at the end of the day.</p>
     </header>
 
-    <div class="card">
-      <div class="field">
-        <label class="field-label" for="taskNum">Task number</label>
-        <input type="text" id="taskNum" placeholder="e.g. DYN-1234-567" oninput="updateModules()">
-        <span style="font-size:11px;color:var(--text-hint);margin-top:3px;display:block;">Format: ABCD-0000-000</span>
+    <div class="card" id="mainCard">
+
+      <!-- Non-task log bar -->
+      <div class="nontask-bar" id="nontaskBar">
+        <button class="btn-nontask" id="nontaskTriggerBtn" onclick="activateNonTaskMode()">Log Non-Task Entry</button>
+        <select id="nontaskType" style="display:none;" onchange="onNontaskTypeChange()">
+          <option value="" disabled selected>Select type…</option>
+          <option value="PTO">PTO</option>
+          <option value="Flex Time">Flex Time</option>
+          <option value="Timecard">Timecard</option>
+          <option value="Meeting">Meeting</option>
+          <option value="Training">Training</option>
+          <option value="Other">Other</option>
+        </select>
+        <input type="text" id="nontaskOtherInput" placeholder="Describe…" style="display:none;flex:1;" oninput="saveFormState()">
+        <button class="btn-nontask-cancel" id="nontaskCancelBtn" style="display:none;" onclick="deactivateNonTaskMode()">✕ Cancel</button>
       </div>
 
-      <div class="field">
-        <label class="field-label" for="taskDesc">Task description</label>
-        <textarea id="taskDesc" placeholder="Briefly describe the task..."></textarea>
-      </div>
-
-      <div class="field">
-        <label class="field-label">Environment(s) tested in</label>
-        <div class="status-row">
-          <button class="status-btn" id="btn-vetting" onclick="toggleEnv('vetting','Vetting')">Vetting</button>
-          <button class="status-btn" id="btn-alpha"   onclick="toggleEnv('alpha',  'Alpha')">Alpha</button>
-          <button class="status-btn" id="btn-beta"    onclick="toggleEnv('beta',   'Beta')">Beta</button>
-          <button class="status-btn" id="btn-release" onclick="toggleEnv('release','Release')">Release</button>
+      <!-- Lockable task fields — locked in non-task mode -->
+      <div id="taskFormFields">
+        <div class="field">
+          <label class="field-label" for="taskNum">Task number</label>
+          <input type="text" id="taskNum" placeholder="e.g. DYN-1234-567" oninput="updateModules()">
+          <span style="font-size:11px;color:var(--text-hint);margin-top:3px;display:block;">Format: ABCD-0000-000</span>
         </div>
-      </div>
 
-      <div class="field">
-        <label class="field-label">SQL or ORA?</label>
-        <div class="status-row">
-          <button class="status-btn" id="btn-sql" onclick="toggleDb('sql','SQL')">SQL</button>
-          <button class="status-btn" id="btn-ora" onclick="toggleDb('ora','ORA')">ORA</button>
+        <div class="field">
+          <label class="field-label" for="taskDesc">Task description</label>
+          <textarea id="taskDesc" placeholder="Briefly describe the task..."></textarea>
         </div>
-      </div>
 
-      <div class="field" id="verField">
-        <label class="field-label">15 or 15U?</label>
-        <div class="status-row">
-          <button class="status-btn" id="btn-15"  onclick="toggleVer('15', '15')">15</button>
-          <button class="status-btn" id="btn-15u" onclick="toggleVer('15u','15U')">15U</button>
+        <div class="field">
+          <label class="field-label">Environment(s) tested in</label>
+          <div class="status-row">
+            <button class="status-btn" id="btn-vetting" onclick="toggleEnv('vetting','Vetting')">Vetting</button>
+            <button class="status-btn" id="btn-alpha"   onclick="toggleEnv('alpha',  'Alpha')">Alpha</button>
+            <button class="status-btn" id="btn-beta"    onclick="toggleEnv('beta',   'Beta')">Beta</button>
+            <button class="status-btn" id="btn-release" onclick="toggleEnv('release','Release')">Release</button>
+          </div>
         </div>
-        <div id="verEnvRow" style="display:none; margin-top:6px;"></div>
-      </div>
 
-      <div class="field">
-        <label class="field-label">Modules tested</label>
-        <div class="checkboxes" id="moduleArea">
-          <span class="no-modules">Enter a task number to see available modules</span>
+        <div class="field">
+          <label class="field-label">SQL or ORA?</label>
+          <div class="status-row">
+            <button class="status-btn" id="btn-sql" onclick="toggleDb('sql','SQL')">SQL</button>
+            <button class="status-btn" id="btn-ora" onclick="toggleDb('ora','ORA')">ORA</button>
+          </div>
         </div>
-      </div>
 
-      <div class="field">
-        <label class="field-label">Status</label>
-        <div class="status-row">
-          <button class="status-btn" id="btn-completed" onclick="setStatus('Completed')">Completed</button>
-          <button class="status-btn" id="btn-sentback"  onclick="setStatus('Sent Back')">Sent Back</button>
-          <button class="status-btn" id="btn-paused"    onclick="setStatus('Paused')">Paused</button>
+        <div class="field" id="verField">
+          <label class="field-label">15 or 15U?</label>
+          <div class="status-row">
+            <button class="status-btn" id="btn-15"  onclick="toggleVer('15', '15')">15</button>
+            <button class="status-btn" id="btn-15u" onclick="toggleVer('15u','15U')">15U</button>
+          </div>
+          <div id="verEnvRow" style="display:none; margin-top:6px;"></div>
         </div>
-      </div>
+
+        <div class="field">
+          <label class="field-label">Modules tested</label>
+          <div class="checkboxes" id="moduleArea">
+            <span class="no-modules">Enter a task number to see available modules</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label">Status</label>
+          <div class="status-row">
+            <button class="status-btn" id="btn-completed" onclick="setStatus('Completed')">Completed</button>
+            <button class="status-btn" id="btn-sentback"  onclick="setStatus('Sent Back')">Sent Back</button>
+            <button class="status-btn" id="btn-paused"    onclick="setStatus('Paused')">Paused</button>
+          </div>
+        </div>
+      </div><!-- /taskFormFields -->
 
       <div class="field">
         <label class="field-label" for="timeInput">Time tested</label>
@@ -757,7 +830,7 @@
         </div>
       </div>
 
-      <div class="field">
+      <div class="field" id="timeRemainingField">
         <label class="field-label" for="timeRemaining">Remaining testing time (est)</label>
         <div class="time-row">
           <select id="timeRemainingQual" onchange="saveFormState()" class="time-qual-select">
@@ -833,7 +906,8 @@ const MODULE_MAP = {
   comp: ['HS','LA','EHS'],
   dyn:  ['QAE','QAS','EM','PAM','RO','Subawards'],
   coi:  ['COI'],
-  tt:   ['TTA','TTC','TTD','TTK','TTF','TTO']
+  tt:   ['TTA','TTC','TTD','TTK','TTF','TTO'],
+  afm:  ['AFM/FM']
 };
 // ENT non-DYN base — DYN portion is appended dynamically via getDynModules()
 const ENT_BASE = ['PD/PT','HS','LA','EHS','COI','TTA','TTC','TTD','TTK','TTF','TTO'];
@@ -1397,20 +1471,26 @@ function getModulesForPrefix(prefix) {
 }
 
 // ── DYN module list ───────────────────────────────────────────────────
-// Default: base modules (shown for all conditions incl. both DBs selected)
-// Condition 2 (Vetting+ORA, Alpha+ORA, Beta+SQL, Release+ORA) → swaps to AFM/FM, FT, AWD
+// Both DBs → all DYN modules shown; auto-colored by env (except QAE/QAS/RO which are manual)
+// Single DB + Condition 2 (Vetting+ORA, Alpha+ORA, Beta+SQL, Release+ORA) → FT/AT/AWD group
+// Single DB default → base modules
 function getDynModules() {
   const base    = ['QAE','QAS','EM','PAM','RO','Subawards'];
   const env     = selectedEnvs[0];
+  const bothDbs = selectedDbs.length === 2;
   const oraOnly = selectedDbs.length === 1 && selectedDbs.includes('ORA');
   const sqlOnly = selectedDbs.length === 1 && selectedDbs.includes('SQL');
 
-  // Condition 2: Vetting+ORA, Alpha+ORA, Beta+SQL, Release+ORA → QAE/QAS always + FT, AWD
+  // Both DBs: show everything so auto-coloring can split them
+  if (bothDbs) {
+    return ['QAE','QAS','RO','EM','PAM','Subawards','FT','AT','AWD'];
+  }
+  // Condition 2: Vetting+ORA, Alpha+ORA, Beta+SQL, Release+ORA → FT/AT/AWD group
   if ((env === 'Vetting' && oraOnly) ||
       (env === 'Alpha'   && oraOnly) ||
       (env === 'Beta'    && sqlOnly) ||
       (env === 'Release' && oraOnly)) {
-    return ['QAE','QAS','RO','FT','AWD'];
+    return ['QAE','QAS','RO','FT','AT','AWD'];
   }
   return base;
 }
@@ -1466,16 +1546,27 @@ function renderModulePills() {
   // For all other prefixes: all modules get mini buttons when both DBs selected
   const bothVers  = selectedVers.includes('15') && selectedVers.includes('15U');
   const entBaseSet = prefix === 'ent' ? new Set(ENT_BASE) : null;
-  // Modules that always show SQL/ORA/Both mini-buttons regardless of ENT DYN auto-color
+  // Modules that always show SQL/ORA/Both mini-buttons regardless of auto-color rules
   const ALWAYS_MANUAL = new Set(['QAE','QAS','RO']);
-  // Condition 1 env→DB mapping used for ENT DYN auto-color
+  // ENT DYN auto-color: all DYN modules → same DB based on env
   const ENT_DYN_ENV_MAP = { 'Vetting': 'sql', 'Alpha': 'sql', 'Beta': 'ora', 'Release': 'sql' };
-  const dynAutoEnv = ENT_DYN_ENV_MAP[selectedEnvs[0]] || 'both';
+  const entDynAutoEnv = ENT_DYN_ENV_MAP[selectedEnvs[0]] || 'both';
+  // DYN task auto-color: two groups split by env
+  const DYN_PRIMARY_MODS = new Set(['EM','PAM','Subawards']); // follow env primary DB
+  const DYN_COND_MODS    = new Set(['FT','AT','AWD']);         // follow opposite DB
+  const DYN_ENV_PRIMARY  = { 'Vetting':'sql', 'Alpha':'sql', 'Beta':'ora', 'Release':'sql' };
+  const dynPrimaryDb     = DYN_ENV_PRIMARY[selectedEnvs[0]] || 'sql';
+  const dynCondDb        = dynPrimaryDb === 'sql' ? 'ora' : 'sql';
+
   area.innerHTML = modules.map(m => {
-    const isChecked    = Object.prototype.hasOwnProperty.call(moduleEnvs, m);
-    const isEntDyn     = entBaseSet !== null && !entBaseSet.has(m) && !ALWAYS_MANUAL.has(m);
-    const canAttribute = bothDbs && (entBaseSet ? (entBaseSet.has(m) || ALWAYS_MANUAL.has(m)) : true);
-    const env          = isEntDyn ? dynAutoEnv : (moduleEnvs[m] || 'both');
+    const isChecked   = Object.prototype.hasOwnProperty.call(moduleEnvs, m);
+    const isEntDyn    = entBaseSet !== null && !entBaseSet.has(m) && !ALWAYS_MANUAL.has(m);
+    const isDynAuto   = prefix === 'dyn' && bothDbs && (DYN_PRIMARY_MODS.has(m) || DYN_COND_MODS.has(m));
+    const autoColor   = isEntDyn ? entDynAutoEnv
+                      : isDynAuto ? (DYN_PRIMARY_MODS.has(m) ? dynPrimaryDb : dynCondDb)
+                      : null;
+    const canAttribute = bothDbs && !isDynAuto && (entBaseSet ? (entBaseSet.has(m) || ALWAYS_MANUAL.has(m)) : true);
+    const env          = autoColor !== null ? autoColor : (moduleEnvs[m] || 'both');
     const ver          = moduleVers[m] || 'both';
     const envRow = (isChecked && canAttribute) ? `
       <span class="pill-env-row" onclick="event.stopPropagation()">
@@ -1489,11 +1580,10 @@ function renderModulePills() {
         <button class="pill-env-btn${ver==='both'?' pill-env-active':''}" onclick="setModuleVer('${m}','both',event)">Both</button>
         <button class="pill-env-btn${ver==='15u' ?' pill-env-active':''}" onclick="setModuleVer('${m}','15u', event)">15U</button>
       </span>` : '';
-    // ENT DYN modules: auto-colored when checked + both DBs; no mini buttons
     const pillClass = isChecked
       ? (canAttribute
           ? `checked env-${env}`
-          : (isEntDyn && bothDbs ? `checked env-${dynAutoEnv}` : 'checked'))
+          : (autoColor !== null && bothDbs ? `checked env-${autoColor}` : 'checked'))
       : '';
     return `<label class="cb-pill ${pillClass}" onclick="togglePill(this)">
       <input type="checkbox" value="${m}"${isChecked?' checked':''}>${m}${envRow}${verRow}
@@ -1619,6 +1709,36 @@ function getVersValue() {
 }
 
 function submitEntry() {
+  if (nonTaskMode) {
+    // Non-task entry — skip all task-related validations
+    const typeVal   = document.getElementById('nontaskType').value;
+    if (!typeVal) { showToast('Please select a non-task type.'); return; }
+    const otherVal  = document.getElementById('nontaskOtherInput').value.trim();
+    const label     = typeVal === 'Other' ? (otherVal || 'Other') : typeVal;
+    records.push({
+      'Task Number':          label,
+      'Task Description':     '—',
+      'Environment(s)':       '—',
+      'SQL or ORA':           '—',
+      '15 or 15U':            '—',
+      'Modules Tested':       '—',
+      'Time Tested':          document.getElementById('timeInput').value.trim() || '—',
+      'Remaining Time (est)': '—',
+      'Status':               'Non-Task',
+      'Notes':                document.getElementById('notes').value.trim()
+    });
+    saveToStorage();
+    document.getElementById('timeInput').value         = '';
+    document.getElementById('timeRemaining').value     = '';
+    document.getElementById('timeRemainingQual').value = '';
+    document.getElementById('notes').value             = '';
+    deactivateNonTaskMode();
+    updateCount();
+    updateSidebar();
+    showToast(`${label} entry saved!`);
+    return;
+  }
+
   const task = document.getElementById('taskNum').value.trim();
   if (!task) { showToast('Please enter a task number.'); return; }
   if (!/^[A-Za-z]{2,4}-\d{4}-\d{3}$/.test(task)) {
@@ -1809,6 +1929,39 @@ function updateCount() {
 
 function confirmReset() { document.getElementById('overlay').classList.add('active'); }
 function closeModal()    { document.getElementById('overlay').classList.remove('active'); }
+
+// ── Non-task mode ────────────────────────────────────────────────────
+let nonTaskMode = false;
+
+function activateNonTaskMode() {
+  nonTaskMode = true;
+  document.getElementById('mainCard').classList.add('nontask-active');
+  document.getElementById('taskFormFields').classList.add('form-locked');
+  document.getElementById('timeRemainingField').classList.add('form-locked');
+  document.getElementById('nontaskTriggerBtn').style.display = 'none';
+  document.getElementById('nontaskType').style.display       = '';
+  document.getElementById('nontaskCancelBtn').style.display  = '';
+}
+
+function onNontaskTypeChange() {
+  const val = document.getElementById('nontaskType').value;
+  const otherInput = document.getElementById('nontaskOtherInput');
+  otherInput.style.display = val === 'Other' ? '' : 'none';
+  if (val !== 'Other') otherInput.value = '';
+}
+
+function deactivateNonTaskMode() {
+  nonTaskMode = false;
+  document.getElementById('mainCard').classList.remove('nontask-active');
+  document.getElementById('taskFormFields').classList.remove('form-locked');
+  document.getElementById('timeRemainingField').classList.remove('form-locked');
+  document.getElementById('nontaskTriggerBtn').style.display = '';
+  document.getElementById('nontaskType').style.display       = 'none';
+  document.getElementById('nontaskType').value               = '';
+  document.getElementById('nontaskOtherInput').style.display = 'none';
+  document.getElementById('nontaskOtherInput').value         = '';
+  document.getElementById('nontaskCancelBtn').style.display  = 'none';
+}
 
 // ── Resume paused task ───────────────────────────────────────────────
 let _pendingResumeRecord = null;
