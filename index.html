@@ -1645,6 +1645,15 @@ function setStatus(s) {
   );
   const map = { 'Completed':'completed', 'Sent Back':'sentback', 'Paused':'paused' };
   document.getElementById('btn-'+map[s]).classList.add('active-'+map[s]);
+  // Lock remaining time when Completed; unlock for any other status
+  const remField = document.getElementById('timeRemainingField');
+  if (s === 'Completed') {
+    remField.classList.add('form-locked');
+    document.getElementById('timeRemaining').value     = '';
+    document.getElementById('timeRemainingQual').value = '';
+  } else {
+    if (!nonTaskMode) remField.classList.remove('form-locked');
+  }
   saveFormState();
 }
 
@@ -1812,6 +1821,7 @@ function clearForm() {
   ['completed','sentback','paused'].forEach(k =>
     document.getElementById('btn-'+k).className = 'status-btn'
   );
+  document.getElementById('timeRemainingField').classList.remove('form-locked');
   selectedEnvs = [];
   ['vetting','alpha','beta','release'].forEach(k =>
     document.getElementById('btn-'+k).className = 'status-btn'
