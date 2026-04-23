@@ -901,7 +901,7 @@
 <script>
 // ── Module map ───────────────────────────────────────────────────────
 const MODULE_MAP = {
-  pre:  ['PD/PT'],
+  pre:  ['PD/PT','PAM'],
   post: ['PD/PT'],
   comp: ['HS','LA','EHS'],
   dyn:  ['QAE','QAS','EM','PAM','RO','Subawards'],
@@ -925,6 +925,8 @@ let verEnvs            = {}; // { '15': 'sql'|'ora'|'both', '15U': ... } — onl
 let editingIndex       = null;
 let editingShowStatus  = false;  // whether Yes was clicked on status question
 let editingNewStatus   = '';     // newly selected status (empty = keep original)
+let editingTempTime    = null;   // in-progress time value while editing
+let editingTempNotes   = null;   // in-progress notes value while editing
 
 // ── localStorage persistence ─────────────────────────────────────────
 const STORE_KEY      = 'taskLogger_records_v1';
@@ -1236,6 +1238,8 @@ function startEdit(idx) {
   editingIndex      = idx;
   editingShowStatus = false;
   editingNewStatus  = '';
+  editingTempTime   = null;
+  editingTempNotes  = null;
   updateSidebar();
   setTimeout(() => {
     const input = document.getElementById('sidebarEditInput');
@@ -1247,16 +1251,27 @@ function cancelEdit() {
   editingIndex      = null;
   editingShowStatus = false;
   editingNewStatus  = '';
+  editingTempTime   = null;
+  editingTempNotes  = null;
   updateSidebar();
 }
 
+function captureEditState() {
+  const timeEl  = document.getElementById('sidebarEditInput');
+  const notesEl = document.getElementById('sidebarEditNotes');
+  if (timeEl)  editingTempTime  = timeEl.value;
+  if (notesEl) editingTempNotes = notesEl.value;
+}
+
 function toggleEditStatus(show) {
+  captureEditState();
   editingShowStatus = show;
   if (!show) editingNewStatus = '';
   updateSidebar();
 }
 
 function selectEditStatus(status) {
+  captureEditState();
   editingNewStatus = status;
   updateSidebar();
 }
@@ -1273,6 +1288,8 @@ function saveEdit(idx) {
   editingIndex      = null;
   editingShowStatus = false;
   editingNewStatus  = '';
+  editingTempTime   = null;
+  editingTempNotes  = null;
   saveToStorage();
   updateSidebar();
 }
@@ -1302,7 +1319,9 @@ function updateSidebar() {
     const rawVal    = (r['Time Tested'] && r['Time Tested'] !== '—') ? r['Time Tested'] : '';
 
     if (i === editingIndex) {
-      const escapedNotes = (r['Notes'] || '').replace(/"/g, '&quot;').replace(/`/g, '&#96;');
+      const displayTime  = editingTempTime  !== null ? editingTempTime  : rawVal;
+      const displayNotes = editingTempNotes !== null ? editingTempNotes : (r['Notes'] || '');
+      const escapedNotes = displayNotes.replace(/"/g, '&quot;').replace(/`/g, '&#96;');
       const currentStatus = r['Status'] || '—';
       const statusClassMap = { 'Completed':'active-completed', 'Sent Back':'active-sentback', 'Paused':'active-paused' };
       const statusPicker = editingShowStatus ? `
@@ -1318,7 +1337,7 @@ function updateSidebar() {
         <div class="sidebar-edit-label">Time Tested</div>
         <div class="sidebar-edit-row">
           <input class="sidebar-time-input" id="sidebarEditInput"
-                 value="${rawVal}" placeholder="e.g. 1hr 30min"
+                 value="${displayTime}" placeholder="e.g. 1hr 30min"
                  onkeydown="handleEditKey(event,${i})">
           <button class="sidebar-edit-save"   onclick="saveEdit(${i})"  title="Save">✓</button>
           <button class="sidebar-edit-cancel" onclick="cancelEdit()"    title="Cancel">✕</button>
