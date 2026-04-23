@@ -1560,11 +1560,13 @@ function renderModulePills() {
 
   area.innerHTML = modules.map(m => {
     const isChecked   = Object.prototype.hasOwnProperty.call(moduleEnvs, m);
-    const isEntDyn    = entBaseSet !== null && !entBaseSet.has(m) && !ALWAYS_MANUAL.has(m);
-    const isDynAuto   = prefix === 'dyn' && bothDbs && (DYN_PRIMARY_MODS.has(m) || DYN_COND_MODS.has(m));
+    const isDynAuto   = bothDbs && (DYN_PRIMARY_MODS.has(m) || DYN_COND_MODS.has(m));
+    const isEntDyn    = entBaseSet !== null && !entBaseSet.has(m) && !ALWAYS_MANUAL.has(m) && !isDynAuto;
     const autoColor   = isEntDyn ? entDynAutoEnv
                       : isDynAuto ? (DYN_PRIMARY_MODS.has(m) ? dynPrimaryDb : dynCondDb)
                       : null;
+    // Keep moduleEnvs in sync with auto-assigned color so getCheckedModules() logs correctly
+    if (isChecked && autoColor !== null) moduleEnvs[m] = autoColor;
     const canAttribute = bothDbs && !isDynAuto && (entBaseSet ? (entBaseSet.has(m) || ALWAYS_MANUAL.has(m)) : true);
     const env          = autoColor !== null ? autoColor : (moduleEnvs[m] || 'both');
     const ver          = moduleVers[m] || 'both';
