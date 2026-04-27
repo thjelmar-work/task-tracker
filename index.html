@@ -904,8 +904,14 @@
       </div>
       <div class="record-count" id="recCount"></div>
       <div class="masterlog-row">
-        <span class="masterlog-count" id="masterLogCount"></span>
-        <div style="display:flex;gap:6px;">
+        <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:0;">
+          <span class="masterlog-count" id="masterLogCount"></span>
+          <span id="masterLogBackupNote" style="font-size:11px;color:var(--text-hint);display:none;">
+            ⚠️ Clearing browser site data will erase the master log. Export regularly to keep a safe copy.
+          </span>
+          <span id="masterLogLastExport" style="font-size:11px;color:var(--text-hint);"></span>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
           <button class="btn btn-masterlog" onclick="downloadMasterLog()" style="flex:unset;padding:7px 14px;">Download Master Log</button>
           <button class="btn btn-masterlog" onclick="document.getElementById('masterLogImport').click()" style="flex:unset;padding:7px 14px;opacity:0.8;">Import Master Log</button>
           <input type="file" id="masterLogImport" accept=".xlsx" style="display:none" onchange="importMasterLog(this)">
@@ -1007,9 +1013,10 @@ let editingTempTime    = null;   // in-progress time value while editing
 let editingTempNotes   = null;   // in-progress notes value while editing
 
 // ── localStorage persistence ─────────────────────────────────────────
-const STORE_KEY      = 'taskLogger_records_v1';
-const FMT_KEY        = 'taskLogger_sidebarFmt';
-const FORM_KEY       = 'taskLogger_formState_v1';
+const STORE_KEY          = 'taskLogger_records_v1';
+const FMT_KEY            = 'taskLogger_sidebarFmt';
+const FORM_KEY           = 'taskLogger_formState_v1';
+const MASTER_EXPORT_KEY  = 'taskLogger_masterLastExport';
 // Master log uses IndexedDB (taskLoggerMaster) — no localStorage key needed
 
 // Records
@@ -1142,6 +1149,19 @@ async function updateMasterLogCount() {
   el.textContent = log.length
     ? `Master log: ${log.length} record${log.length !== 1 ? 's' : ''} across all sessions`
     : 'Master log: no records yet';
+
+  // Show cache warning whenever there are records worth protecting
+  const noteEl = document.getElementById('masterLogBackupNote');
+  if (noteEl) noteEl.style.display = log.length ? '' : 'none';
+
+  // Show last export date
+  const lastExportEl = document.getElementById('masterLogLastExport');
+  if (lastExportEl) {
+    const lastExport = localStorage.getItem(MASTER_EXPORT_KEY);
+    lastExportEl.textContent = lastExport
+      ? `Last exported: ${lastExport}`
+      : log.length ? 'Not yet exported — download a copy to keep it safe.' : '';
+  }
 }
 
 // In-progress form state
@@ -2222,6 +2242,8 @@ async function downloadMasterLog() {
   const wb = await buildWorkbook(log, true);
   const date = new Date().toISOString().slice(0, 10);
   await downloadWorkbook(wb, `task-log-master-${date}.xlsx`);
+  try { localStorage.setItem(MASTER_EXPORT_KEY, new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })); } catch(_) {}
+  updateMasterLogCount();
   showToast('Master log downloaded.');
 }
 
