@@ -2416,17 +2416,37 @@ function doReset() {
   showToast('All data cleared.');
 }
 
-function showToast(msg) {
+function showToast(msg, duration = 2800) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove('show'), 2800);
+  t._timer = setTimeout(() => t.classList.remove('show'), duration);
 }
 
 // ── Init ─────────────────────────────────────────────────────────────
 loadFromStorage();
 updateMasterLogCount();
+
+// Request persistent storage so the browser won't auto-evict master log data
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persist(); // silently requests — browser may prompt or auto-grant
+}
+
+// On load: remind user to export master log if it hasn't been exported in 3+ days
+(async () => {
+  const log = await loadMasterLog();
+  if (!log.length) return;
+  const lastExport = localStorage.getItem(MASTER_EXPORT_KEY);
+  if (!lastExport) {
+    showToast('⚠️ Master log has never been exported. Download it to keep a safe copy.');
+    return;
+  }
+  const daysSince = Math.floor((Date.now() - new Date(lastExport).getTime()) / 86400000);
+  if (daysSince >= 3) {
+    showToast(`⚠️ Master log last exported ${daysSince} day${daysSince !== 1 ? 's' : ''} ago — consider downloading a fresh copy.`, 6000);
+  }
+})();
 
 // Save form state on every keystroke in text fields / textareas
 ['taskNum','taskDesc','timeInput','timeRemaining','notes'].forEach(id => {
