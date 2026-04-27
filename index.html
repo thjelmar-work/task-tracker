@@ -665,6 +665,50 @@
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+  /* Preview modal */
+  .preview-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+    display: none; align-items: flex-start; justify-content: center;
+    z-index: 200; padding: 24px 16px; overflow-y: auto;
+  }
+  .preview-overlay.active { display: flex; }
+  .preview-modal {
+    background: var(--surface); border-radius: var(--radius-lg);
+    border: 0.5px solid var(--border); width: 100%; max-width: 1000px;
+    padding: 24px; display: flex; flex-direction: column; gap: 16px;
+  }
+  .preview-modal-header {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  }
+  .preview-modal-header h2 { font-size: 16px; font-weight: 600; }
+  .preview-modal-header p  { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .preview-modal-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .preview-table-wrap { overflow-x: auto; border-radius: 8px; border: 0.5px solid var(--border); }
+  .preview-table {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+  }
+  .preview-table th {
+    background: var(--surface2); color: var(--text-muted);
+    font-weight: 600; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.05em; padding: 8px 10px; text-align: left;
+    border-bottom: 0.5px solid var(--border-med); white-space: nowrap;
+  }
+  .preview-table td {
+    padding: 8px 10px; border-bottom: 0.5px solid var(--border);
+    color: var(--text); vertical-align: top; line-height: 1.45;
+  }
+  .preview-table tr:last-child td { border-bottom: none; }
+  .preview-table tr:nth-child(even) td { background: var(--surface2); }
+  .preview-status-completed { color: var(--green-text); font-weight: 600; }
+  .preview-status-sentback  { color: var(--red-text);   font-weight: 600; }
+  .preview-status-paused    { color: var(--amber-text);  font-weight: 600; }
+  .preview-status-nontask   { color: var(--text-muted);  font-style: italic; }
+  .preview-total-row {
+    display: flex; justify-content: flex-end; font-size: 13px;
+    color: var(--text-muted); padding-top: 4px;
+  }
+  .preview-total-row strong { color: var(--text); margin-left: 6px; }
+
   /* Confirm modal */
   .overlay {
     display: none;
@@ -853,8 +897,8 @@
 
       <div class="btn-row">
         <button class="btn btn-save"   onclick="submitEntry()">Save &amp; Add Another</button>
-        <button class="btn btn-midday" onclick="midDayDownload()">Mid-Day Download</button>
-        <button class="btn btn-export" onclick="exportExcel()">Wrap Up the Day / Download Excel</button>
+        <button class="btn btn-midday" onclick="openPreview('midday')">Mid-Day Snapshot</button>
+        <button class="btn btn-export" onclick="openPreview('wrapup')">Wrap Up the Day</button>
         <button class="btn btn-reset"  onclick="confirmReset()">Reset all</button>
       </div>
       <div class="record-count" id="recCount"></div>
@@ -870,6 +914,27 @@
   </div>
 
 </div><!-- /.layout -->
+
+<!-- Preview modal -->
+<div class="preview-overlay" id="previewOverlay" onclick="closePreview(event)">
+  <div class="preview-modal" onclick="event.stopPropagation()">
+    <div class="preview-modal-header">
+      <div>
+        <h2 id="previewTitle">Log Preview</h2>
+        <p id="previewSubtitle"></p>
+      </div>
+      <div class="preview-modal-actions">
+        <button class="btn btn-midday" id="previewDownloadBtn" style="flex:unset;padding:7px 14px;font-size:13px;" onclick="previewDownload()">↓ Download Excel</button>
+        <button class="btn" style="flex:unset;padding:7px 14px;font-size:13px;background:var(--surface2);border-color:var(--border-med);color:var(--text);" onclick="copyPreviewTable(this)">Copy Table</button>
+        <button class="btn btn-reset"  style="flex:unset;padding:7px 14px;font-size:13px;" onclick="closePreview()">Close</button>
+      </div>
+    </div>
+    <div class="preview-table-wrap">
+      <table class="preview-table" id="previewTable"></table>
+    </div>
+    <div class="preview-total-row" id="previewTotal"></div>
+  </div>
+</div>
 
 <!-- Confirm modal -->
 <div class="overlay" id="overlay">
@@ -1916,6 +1981,149 @@ async function downloadWorkbook(wb, filename) {
   const a      = document.createElement('a');
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
+}
+
+// ── Preview modal ────────────────────────────────────────────────────
+let _previewMode = ''; // 'midday' | 'wrapup'
+
+async function openPreview(mode) {
+  if (!records.length) { showToast('No records to export yet.'); return; }
+  _previewMode = mode;
+
+  const cols = ['Task Number','Task Description','Environment(s)','SQL or ORA','15 or 15U',
+                 'Modules Tested','Status','Time Tested','Remaining Time (est)','Notes'];
+  const statusClassMap = { 'Completed':'preview-status-completed', 'Sent Back':'preview-status-sentback',
+                            'Paused':'preview-status-paused', 'Non-Task':'preview-status-nontask' };
+
+  const thead = `<thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead>`;
+  const tbody = `<tbody>${records.map(r => `<tr>${cols.map(c => {
+    const val = r[c] ?? '—';
+    const cls = c === 'Status' ? (statusClassMap[val] || '') : '';
+    return `<td${cls ? ` class="${cls}"` : ''}>${val || '—'}</td>`;
+  }).join('')}</tr>`).join('')}</tbody>`;
+
+  document.getElementById('previewTable').innerHTML = thead + tbody;
+
+  // Total time
+  const totalHrs = records.reduce((sum, r) => sum + parseTimeToHours(r['Time Tested']), 0);
+  document.getElementById('previewTotal').innerHTML =
+    totalHrs > 0 ? `Total time tested: <strong>${formatForSidebar(totalHrs)}</strong>` : '';
+
+  if (mode === 'midday') {
+    document.getElementById('previewTitle').textContent    = 'Mid-Day Snapshot';
+    document.getElementById('previewSubtitle').textContent = 'Data will be retained after download.';
+    document.getElementById('previewDownloadBtn').style.display = '';
+  } else {
+    document.getElementById('previewTitle').textContent    = 'End of Day — Wrap Up';
+    document.getElementById('previewSubtitle').textContent = 'Downloading will save to master log and clear today\'s entries.';
+    document.getElementById('previewDownloadBtn').style.display = '';
+  }
+
+  document.getElementById('previewOverlay').classList.add('active');
+}
+
+function closePreview(e) {
+  if (e && e.target !== document.getElementById('previewOverlay')) return;
+  document.getElementById('previewOverlay').classList.remove('active');
+  _previewMode = '';
+}
+
+function copyPreviewTable(btn) {
+  const cols = ['Task Number','Task Description','Environment(s)','SQL or ORA','15 or 15U',
+                 'Modules Tested','Status','Time Tested','Remaining Time (est)','Notes'];
+
+  const thStyle = 'background:#f0efe9;font-weight:600;padding:6px 10px;border:1px solid #ccc;white-space:nowrap;font-size:12px;color:#1a1a18;';
+  const tdStyle = 'background:#ffffff;padding:6px 10px;border:1px solid #ccc;font-size:12px;vertical-align:top;color:#1a1a18;';
+  const headerRow = `<tr>${cols.map(c => `<th style="${thStyle}">${c}</th>`).join('')}</tr>`;
+  const bodyRows  = records.map(r =>
+    `<tr>${cols.map(c => `<td style="${tdStyle}">${r[c] ?? '—'}</td>`).join('')}</tr>`
+  ).join('');
+  const html = `<table style="border-collapse:collapse;font-family:sans-serif;background:#ffffff;">${headerRow}${bodyRows}</table>`;
+
+  const textRows = [cols, ...records.map(r => cols.map(c => r[c] ?? '—'))];
+  const text = textRows.map(row => row.join('\t')).join('\n');
+
+  const confirm = () => {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => btn.textContent = orig, 2000);
+  };
+
+  // 1. ClipboardItem — Chrome/Edge use Blob directly; Safari requires Promise<Blob>.
+  //    Called synchronously (no await before this) so user-gesture context is preserved.
+  if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+    try {
+      const htmlBlob  = new Blob([html], { type: 'text/html' });
+      const textBlob  = new Blob([text], { type: 'text/plain' });
+      // Pass as Promise<Blob> — accepted by both Chrome and Safari
+      const item = new ClipboardItem({
+        'text/html':  Promise.resolve(htmlBlob),
+        'text/plain': Promise.resolve(textBlob)
+      });
+      navigator.clipboard.write([item]).then(confirm).catch(() => execCommandCopy(html, text, confirm));
+      return;
+    } catch(_) { /* ClipboardItem constructor failed — fall through */ }
+  }
+
+  // 2. execCommand fallback (Safari < 13.1, Firefox) — contenteditable preserves HTML
+  execCommandCopy(html, text, confirm);
+}
+
+function execCommandCopy(html, text, onSuccess) {
+  // Use a contenteditable div so the browser copies rich HTML.
+  // Suppress selection highlight via a temporary CSS rule to avoid color bleed.
+  const styleEl = document.createElement('style');
+  styleEl.textContent = '#__cpydiv,#__cpydiv *{background:#fff!important;}';
+  document.head.appendChild(styleEl);
+
+  const div = document.createElement('div');
+  div.id = '__cpydiv';
+  div.contentEditable = 'true';
+  div.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;overflow:hidden;opacity:0.01;';
+  div.innerHTML = html;
+  document.body.appendChild(div);
+
+  const sel   = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(div);
+  sel.removeAllRanges();
+  sel.addRange(range);
+
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch(_) {}
+
+  sel.removeAllRanges();
+  document.body.removeChild(div);
+  document.head.removeChild(styleEl);
+
+  if (ok) {
+    onSuccess();
+  } else {
+    // Last resort: plain text via textarea
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); onSuccess(); }
+    catch(_) { showToast('Copy failed — try selecting and copying manually.'); }
+    document.body.removeChild(ta);
+  }
+}
+
+async function previewDownload() {
+  if (_previewMode === 'midday') {
+    const wb    = await buildWorkbook(records);
+    const now   = new Date();
+    const stamp = now.toISOString().slice(0,10) + '_' +
+      String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0');
+    await downloadWorkbook(wb, `task-log-midday-${stamp}.xlsx`);
+    showToast('Mid-day snapshot downloaded — data retained.');
+    document.getElementById('previewOverlay').classList.remove('active');
+  } else if (_previewMode === 'wrapup') {
+    await exportExcel();
+    document.getElementById('previewOverlay').classList.remove('active');
+  }
 }
 
 async function midDayDownload() {
