@@ -720,6 +720,7 @@
     justify-content: center;
   }
   .overlay.active { display: flex; }
+  #wrapupCloseOverlay { z-index: 300; }
 
   .modal {
     background: var(--surface);
@@ -916,7 +917,7 @@
 </div><!-- /.layout -->
 
 <!-- Preview modal -->
-<div class="preview-overlay" id="previewOverlay" onclick="closePreview(event)">
+<div class="preview-overlay" id="previewOverlay" onclick="handlePreviewBackdrop(event)">
   <div class="preview-modal" onclick="event.stopPropagation()">
     <div class="preview-modal-header">
       <div>
@@ -926,13 +927,25 @@
       <div class="preview-modal-actions">
         <button class="btn btn-midday" id="previewDownloadBtn" style="flex:unset;padding:7px 14px;font-size:13px;" onclick="previewDownload()">↓ Download Excel</button>
         <button class="btn" style="flex:unset;padding:7px 14px;font-size:13px;background:var(--surface2);border-color:var(--border-med);color:var(--text);" onclick="copyPreviewTable(this)">Copy Table</button>
-        <button class="btn btn-reset"  style="flex:unset;padding:7px 14px;font-size:13px;" onclick="closePreview()">Close</button>
+        <button class="btn btn-reset" style="flex:unset;padding:7px 14px;font-size:13px;" onclick="handlePreviewClose()">Close</button>
       </div>
     </div>
     <div class="preview-table-wrap">
       <table class="preview-table" id="previewTable"></table>
     </div>
     <div class="preview-total-row" id="previewTotal"></div>
+  </div>
+</div>
+
+<!-- Wrap-up close confirm modal -->
+<div class="overlay" id="wrapupCloseOverlay">
+  <div class="modal">
+    <h2>Clear the day?</h2>
+    <p>You're closing without downloading. Would you like to save today's entries to the master log and clear the day anyway?</p>
+    <div class="modal-btns">
+      <button class="modal-yes" onclick="clearDay()">Yes, clear the day</button>
+      <button class="modal-no"  onclick="dismissWrapupClose()">No, keep entries</button>
+    </div>
   </div>
 </div>
 
@@ -2024,6 +2037,45 @@ async function openPreview(mode) {
 
 function closePreview(e) {
   if (e && e.target !== document.getElementById('previewOverlay')) return;
+  document.getElementById('previewOverlay').classList.remove('active');
+  _previewMode = '';
+}
+
+function handlePreviewBackdrop(e) {
+  if (e.target !== document.getElementById('previewOverlay')) return;
+  if (_previewMode === 'wrapup') {
+    document.getElementById('wrapupCloseOverlay').classList.add('active');
+  } else {
+    document.getElementById('previewOverlay').classList.remove('active');
+    _previewMode = '';
+  }
+}
+
+function handlePreviewClose() {
+  if (_previewMode === 'wrapup') {
+    // Offer to clear the day before closing
+    document.getElementById('wrapupCloseOverlay').classList.add('active');
+  } else {
+    document.getElementById('previewOverlay').classList.remove('active');
+    _previewMode = '';
+  }
+}
+
+async function clearDay() {
+  document.getElementById('wrapupCloseOverlay').classList.remove('active');
+  document.getElementById('previewOverlay').classList.remove('active');
+  _previewMode = '';
+  await appendToMasterLog(records);
+  records = [];
+  clearStorage();
+  clearForm();
+  updateCount();
+  updateSidebar();
+  showToast('Day cleared and saved to master log.');
+}
+
+function dismissWrapupClose() {
+  document.getElementById('wrapupCloseOverlay').classList.remove('active');
   document.getElementById('previewOverlay').classList.remove('active');
   _previewMode = '';
 }
