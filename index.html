@@ -1882,9 +1882,22 @@ function submitEntry() {
 }
 
 function clearForm() {
-  document.getElementById('taskNum').value       = '';
-  document.getElementById('taskDesc').value      = '';
-  document.getElementById('timeInput').value     = '';
+  // Reset non-task mode if active
+  if (nonTaskMode) {
+    nonTaskMode = false;
+    document.getElementById('mainCard').classList.remove('nontask-active');
+    document.getElementById('taskFormFields').classList.remove('form-locked');
+    document.getElementById('nontaskTriggerBtn').style.display = '';
+    document.getElementById('nontaskType').style.display       = 'none';
+    document.getElementById('nontaskType').value               = '';
+    document.getElementById('nontaskOtherInput').style.display = 'none';
+    document.getElementById('nontaskOtherInput').value         = '';
+    document.getElementById('nontaskCancelBtn').style.display  = 'none';
+  }
+
+  document.getElementById('taskNum').value           = '';
+  document.getElementById('taskDesc').value          = '';
+  document.getElementById('timeInput').value         = '';
   document.getElementById('timeRemaining').value     = '';
   document.getElementById('timeRemainingQual').value = '';
   document.getElementById('notes').value             = '';
@@ -1913,6 +1926,15 @@ function clearForm() {
   ['15','15u'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
   renderVerEnvRow();
   clearFormStorage();
+}
+
+// Shared reset logic — clears records, form, and sidebar
+function resetDay() {
+  records = [];
+  clearStorage();
+  clearForm();
+  updateCount();
+  updateSidebar();
 }
 
 // ── Excel export ─────────────────────────────────────────────────────
@@ -2066,11 +2088,7 @@ async function clearDay() {
   document.getElementById('previewOverlay').classList.remove('active');
   _previewMode = '';
   await appendToMasterLog(records);
-  records = [];
-  clearStorage();
-  clearForm();
-  updateCount();
-  updateSidebar();
+  resetDay();
   showToast('Day cleared and saved to master log.');
 }
 
@@ -2194,11 +2212,7 @@ async function exportExcel() {
   const wb   = await buildWorkbook(records);
   const date = new Date().toISOString().slice(0, 10);
   await downloadWorkbook(wb, `task-log-${date}.xlsx`);
-  records = [];
-  clearStorage();
-  clearForm();
-  updateCount();
-  updateSidebar();
+  resetDay();
   showToast('Excel downloaded! Log cleared for a new day.');
 }
 
@@ -2375,11 +2389,7 @@ function doResume() {
 }
 
 function doReset() {
-  records = [];
-  clearStorage();
-  clearForm();
-  updateCount();
-  updateSidebar();
+  resetDay();
   closeModal();
   showToast('All data cleared.');
 }
