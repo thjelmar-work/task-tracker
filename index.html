@@ -462,6 +462,43 @@
     align-items: center;
   }
 
+  /* ── ENT group layout ─────────────────────────────────────────────── */
+  .ent-module-groups { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+  .ent-module-group  { display: flex; flex-direction: column; gap: 5px; }
+  .ent-group-header  { display: flex; align-items: center; gap: 6px; }
+  .ent-group-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.07em;
+    text-transform: uppercase; padding: 1px 7px; border-radius: 4px;
+    border: 0.5px solid; white-space: nowrap;
+  }
+  .ent-group-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  /* Group label + pill tint colors — unchecked border, checked background */
+  /* pre  */ .ent-group-label.glbl-pre,  .cb-pill.group-pre  { border-color:rgba(13,148,136,.55); color:#0d9488; }
+  /* comp */ .ent-group-label.glbl-comp, .cb-pill.group-comp { border-color:rgba(217,119,6,.55);  color:#b45309; }
+  /* coi  */ .ent-group-label.glbl-coi,  .cb-pill.group-coi  { border-color:rgba(2,132,199,.55);  color:#0369a1; }
+  /* tt   */ .ent-group-label.glbl-tt,   .cb-pill.group-tt   { border-color:rgba(124,58,237,.55); color:#6d28d9; }
+  /* afm  */ .ent-group-label.glbl-afm,  .cb-pill.group-afm  { border-color:rgba(225,29,72,.55);  color:#be123c; }
+  /* nms  */ .ent-group-label.glbl-nms,  .cb-pill.group-nms  { border-color:rgba(100,116,139,.55);color:#475569; }
+  /* dyn  */ .ent-group-label.glbl-dyn,  .cb-pill.group-dyn  { border-color:rgba(5,150,105,.55);  color:#047857; }
+
+  .ent-group-label.glbl-pre  { background:rgba(13,148,136,.1);  }
+  .ent-group-label.glbl-comp { background:rgba(217,119,6,.1);   }
+  .ent-group-label.glbl-coi  { background:rgba(2,132,199,.1);   }
+  .ent-group-label.glbl-tt   { background:rgba(124,58,237,.1);  }
+  .ent-group-label.glbl-afm  { background:rgba(225,29,72,.1);   }
+  .ent-group-label.glbl-nms  { background:rgba(100,116,139,.1); }
+  .ent-group-label.glbl-dyn  { background:rgba(5,150,105,.1);   }
+
+  /* Checked without DB assignment → show full group color */
+  .cb-pill.group-pre.checked:not(.env-sql):not(.env-ora):not(.env-both)  { background:rgba(13,148,136,.15);  border-color:#0d9488; color:#0d9488; }
+  .cb-pill.group-comp.checked:not(.env-sql):not(.env-ora):not(.env-both) { background:rgba(217,119,6,.15);   border-color:#d97706; color:#b45309; }
+  .cb-pill.group-coi.checked:not(.env-sql):not(.env-ora):not(.env-both)  { background:rgba(2,132,199,.15);   border-color:#0284c7; color:#0369a1; }
+  .cb-pill.group-tt.checked:not(.env-sql):not(.env-ora):not(.env-both)   { background:rgba(124,58,237,.15);  border-color:#7c3aed; color:#6d28d9; }
+  .cb-pill.group-afm.checked:not(.env-sql):not(.env-ora):not(.env-both)  { background:rgba(225,29,72,.15);   border-color:#e11d48; color:#be123c; }
+  .cb-pill.group-nms.checked:not(.env-sql):not(.env-ora):not(.env-both)  { background:rgba(100,116,139,.15); border-color:#64748b; color:#475569; }
+  .cb-pill.group-dyn.checked:not(.env-sql):not(.env-ora):not(.env-both)  { background:rgba(5,150,105,.15);   border-color:#059669; color:#047857; }
+
   .cb-pill {
     display: flex;
     align-items: center;
@@ -995,6 +1032,28 @@ const MODULE_MAP = {
 };
 // ENT non-DYN base — DYN portion is appended dynamically via getDynModules()
 const ENT_BASE = ['PD/PT','HS','LA','EHS','COI','TTA','TTC','TTD','TTK','TTF','TTO','AFM/FM','Non Module Specific'];
+
+// ENT group metadata for colored/columnar pill layout
+const ENT_GROUP_MAP = {
+  'PD/PT':'pre',
+  'HS':'comp','LA':'comp','EHS':'comp',
+  'COI':'coi',
+  'TTA':'tt','TTC':'tt','TTD':'tt','TTK':'tt','TTF':'tt','TTO':'tt',
+  'AFM/FM':'afm',
+  'Non Module Specific':'nms',
+  'QAE':'dyn','QAS':'dyn','EM':'dyn','PAM':'dyn','RO':'dyn','Subawards':'dyn',
+  'FT':'dyn','AT':'dyn','AWD':'dyn',
+};
+const ENT_GROUP_META = {
+  pre:  { label:'PRE/POST' },
+  comp: { label:'COMP'     },
+  coi:  { label:'COI'      },
+  tt:   { label:'TT'       },
+  afm:  { label:'AFM'      },
+  nms:  { label:'General'  },
+  dyn:  { label:'DYN'      },
+};
+const ENT_GROUP_ORDER = ['pre','comp','coi','tt','afm','nms','dyn'];
 
 // ── App state ────────────────────────────────────────────────────────
 let records      = [];
@@ -1675,18 +1734,19 @@ function renderModulePills() {
   const dynPrimaryDb     = DYN_ENV_PRIMARY[selectedEnvs[0]] || 'sql';
   const dynCondDb        = dynPrimaryDb === 'sql' ? 'ora' : 'sql';
 
-  area.innerHTML = modules.map(m => {
+  // Helper: build a single pill's HTML
+  const buildPill = m => {
     const isChecked   = Object.prototype.hasOwnProperty.call(moduleEnvs, m);
     const isDynAuto   = bothDbs && (DYN_PRIMARY_MODS.has(m) || DYN_COND_MODS.has(m));
     const isEntDyn    = entBaseSet !== null && !entBaseSet.has(m) && !ALWAYS_MANUAL.has(m) && !isDynAuto;
     const autoColor   = isEntDyn ? entDynAutoEnv
                       : isDynAuto ? (DYN_PRIMARY_MODS.has(m) ? dynPrimaryDb : dynCondDb)
                       : null;
-    // Keep moduleEnvs in sync with auto-assigned color so getCheckedModules() logs correctly
     if (isChecked && autoColor !== null) moduleEnvs[m] = autoColor;
     const canAttribute = bothDbs && !isDynAuto && (entBaseSet ? (entBaseSet.has(m) || ALWAYS_MANUAL.has(m)) : true);
-    const env          = autoColor !== null ? autoColor : (moduleEnvs[m] || 'both');
-    const ver          = moduleVers[m] || 'both';
+    const env  = autoColor !== null ? autoColor : (moduleEnvs[m] || 'both');
+    const ver  = moduleVers[m] || 'both';
+    const groupCls = (prefix === 'ent' && ENT_GROUP_MAP[m]) ? ` group-${ENT_GROUP_MAP[m]}` : '';
     const envRow = (isChecked && canAttribute) ? `
       <span class="pill-env-row" onclick="event.stopPropagation()">
         <button class="pill-env-btn${env==='sql' ?' pill-env-active':''}" onclick="setModuleEnv('${m}','sql', event)">SQL</button>
@@ -1704,10 +1764,34 @@ function renderModulePills() {
           ? `checked env-${env}`
           : (autoColor !== null && bothDbs ? `checked env-${autoColor}` : 'checked'))
       : '';
-    return `<label class="cb-pill ${pillClass}" onclick="togglePill(this)">
+    return `<label class="cb-pill ${pillClass}${groupCls}" onclick="togglePill(this)">
       <input type="checkbox" value="${m}"${isChecked?' checked':''}>${m}${envRow}${verRow}
     </label>`;
-  }).join('');
+  };
+
+  // ENT tasks: render pills in labelled group sections
+  if (prefix === 'ent') {
+    const grouped = {};
+    modules.forEach(m => {
+      const g = ENT_GROUP_MAP[m] || 'nms';
+      if (!grouped[g]) grouped[g] = [];
+      grouped[g].push(m);
+    });
+    area.innerHTML = `<div class="ent-module-groups">${
+      ENT_GROUP_ORDER
+        .filter(g => grouped[g] && grouped[g].length)
+        .map(g => `<div class="ent-module-group">
+          <div class="ent-group-header">
+            <span class="ent-group-label glbl-${g}">${ENT_GROUP_META[g].label}</span>
+          </div>
+          <div class="ent-group-pills">${grouped[g].map(buildPill).join('')}</div>
+        </div>`).join('')
+    }</div>`;
+    return;
+  }
+
+  // All other prefixes: flat layout
+  area.innerHTML = modules.map(buildPill).join('');
 }
 
 function togglePill(el) {
