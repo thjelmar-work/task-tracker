@@ -1310,7 +1310,30 @@ async function importMasterLog(inputEl) {
     }
 
     await mergeIntoMasterLog(imported);
-    showToast(`Imported ${imported.length} record${imported.length !== 1 ? 's' : ''} into master log.`);
+
+    // Add any records logged today into the current session's Today's Log
+    const today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+    const todayRecords = imported.filter(r => r['Log Date'] === today);
+    if (todayRecords.length) {
+      // Strip Log Date before adding to session (session records don't carry it)
+      todayRecords.forEach(r => {
+        const { 'Log Date': _, id, ...sessionRecord } = r;
+        // Avoid duplicates — skip if an entry with the same Task Number + Status already exists
+        const isDuplicate = records.some(existing =>
+          existing['Task Number'] === sessionRecord['Task Number'] &&
+          existing['Status']      === sessionRecord['Status']
+        );
+        if (!isDuplicate) records.push(sessionRecord);
+      });
+      saveToStorage();
+      updateCount();
+      updateSidebar();
+    }
+
+    const todayMsg = todayRecords.length
+      ? ` (${todayRecords.length} added to Today's Log)`
+      : '';
+    showToast(`Imported ${imported.length} record${imported.length !== 1 ? 's' : ''} into master log${todayMsg}.`);
   } catch(e) {
     showToast('Failed to read file. Make sure it\'s a valid .xlsx master log.');
   }
