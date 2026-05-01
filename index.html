@@ -2436,7 +2436,8 @@ async function downloadWorkbook(wb, filename) {
 }
 
 // ── Preview modal ────────────────────────────────────────────────────
-let _previewMode = ''; // 'midday' | 'wrapup'
+let _previewMode    = ''; // 'midday' | 'wrapup'
+let _previewPECache = []; // today's P&E records cached at preview open time
 
 async function openPreview(mode) {
   const todayPEsCheck = await loadPERecordsToday();
@@ -2462,8 +2463,9 @@ async function openPreview(mode) {
   document.getElementById('previewTotal').innerHTML =
     totalHrs > 0 ? `Total time tested: <strong>${formatForSidebar(totalHrs)}</strong>` : '';
 
-  // P&E records for today
+  // P&E records for today — cache so copyPreviewTable can use them synchronously
   const todayPEs  = await loadPERecordsToday();
+  _previewPECache = todayPEs;
   const peSection = document.getElementById('previewPESection');
   const peTable   = document.getElementById('previewPETable');
   if (todayPEs.length) {
@@ -2492,7 +2494,8 @@ async function openPreview(mode) {
 function closePreview(e) {
   if (e && e.target !== document.getElementById('previewOverlay')) return;
   document.getElementById('previewOverlay').classList.remove('active');
-  _previewMode = '';
+  _previewMode    = '';
+  _previewPECache = [];
 }
 
 function handlePreviewBackdrop(e) {
@@ -2530,35 +2533,32 @@ function dismissWrapupClose() {
   _previewMode = '';
 }
 
-async function copyPreviewTable(btn) {
+function copyPreviewTable(btn) {
   const taskCols = ['Task Number','Task Description','Environment(s)','SQL or ORA','15 or 15U',
                     'Modules Tested','Status','Time Tested','Remaining Time (est)','Notes'];
   const peCols   = ['P&E Number','Description','Details','Task Found In','Task Created','Created Task Number','Time Tested'];
 
-  const thStyle    = 'background:#f0efe9;font-weight:600;padding:6px 10px;border:1px solid #ccc;white-space:nowrap;font-size:12px;color:#1a1a18;';
-  const tdStyle    = 'background:#ffffff;padding:6px 10px;border:1px solid #ccc;font-size:12px;vertical-align:top;color:#1a1a18;';
-  const peThStyle  = 'background:#f5d9d9;font-weight:600;padding:6px 10px;border:1px solid #ccc;white-space:nowrap;font-size:12px;color:#5c1a1a;';
-  const peTdStyle  = 'background:#ffffff;padding:6px 10px;border:1px solid #ccc;font-size:12px;vertical-align:top;color:#1a1a18;';
+  const thStyle   = 'background:#f0efe9;font-weight:600;padding:6px 10px;border:1px solid #ccc;white-space:nowrap;font-size:12px;color:#1a1a18;';
+  const tdStyle   = 'background:#ffffff;padding:6px 10px;border:1px solid #ccc;font-size:12px;vertical-align:top;color:#1a1a18;';
+  const peThStyle = 'background:#f5d9d9;font-weight:600;padding:6px 10px;border:1px solid #ccc;white-space:nowrap;font-size:12px;color:#5c1a1a;';
+  const peTdStyle = 'background:#ffffff;padding:6px 10px;border:1px solid #ccc;font-size:12px;vertical-align:top;color:#1a1a18;';
 
-  // Build task table HTML
   const taskHeader = `<tr>${taskCols.map(c => `<th style="${thStyle}">${c}</th>`).join('')}</tr>`;
   const taskBody   = records.map(r =>
     `<tr>${taskCols.map(c => `<td style="${tdStyle}">${r[c] ?? '—'}</td>`).join('')}</tr>`
   ).join('');
-  let html = `<table style="border-collapse:collapse;font-family:sans-serif;background:#ffffff;">${taskHeader}${taskBody}</table>`;
-
+  let html     = `<table style="border-collapse:collapse;font-family:sans-serif;background:#ffffff;">${taskHeader}${taskBody}</table>`;
   let textRows = [taskCols, ...records.map(r => taskCols.map(c => r[c] ?? '—'))];
 
-  // Append P&E section if any exist today
-  const todayPEs = await loadPERecordsToday();
-  if (todayPEs.length) {
+  // Use cached P&E records — no async needed, preserves user gesture context
+  if (_previewPECache.length) {
     const peHeader = `<tr>${peCols.map(c => `<th style="${peThStyle}">${c}</th>`).join('')}</tr>`;
-    const peBody   = todayPEs.map(r =>
+    const peBody   = _previewPECache.map(r =>
       `<tr>${peCols.map(c => `<td style="${peTdStyle}">${r[c] ?? '—'}</td>`).join('')}</tr>`
     ).join('');
     html += `<br><p style="font-family:sans-serif;font-weight:600;color:#5c1a1a;margin:8px 0 4px;">ProductErrors</p>
              <table style="border-collapse:collapse;font-family:sans-serif;background:#ffffff;">${peHeader}${peBody}</table>`;
-    textRows.push([], ['— ProductErrors —'], peCols, ...todayPEs.map(r => peCols.map(c => r[c] ?? '—')));
+    textRows.push([], ['— ProductErrors —'], peCols, ..._previewPECache.map(r => peCols.map(c => r[c] ?? '—')));
   }
 
   const text = textRows.map(row => row.join('\t')).join('\n');
@@ -2569,7 +2569,7 @@ async function copyPreviewTable(btn) {
     setTimeout(() => btn.textContent = orig, 2000);
   };
 
-  // ClipboardItem — synchronously constructed before any await so Safari user-gesture is preserved
+  // Synchronous — no await before clipboard write, user gesture context preserved
   if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
     try {
       const item = new ClipboardItem({
