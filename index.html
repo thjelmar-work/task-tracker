@@ -233,6 +233,21 @@
 
   .sidebar-entry--editing .sidebar-entry-task { flex: unset; }
 
+  /* PE entries in sidebar */
+  .sidebar-pe-label {
+    font-size: 9px; font-weight: 700; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--red-text);
+    background: rgba(225,29,72,.1); border: 0.5px solid rgba(225,29,72,.3);
+    border-radius: 3px; padding: 1px 5px; flex-shrink: 0;
+  }
+  .sidebar-section-divider {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--text-hint);
+    padding: 5px 14px 3px;
+    border-top: 0.5px solid var(--border);
+    margin-top: 2px;
+  }
+
   .sidebar-edit-row {
     display: flex;
     align-items: center;
@@ -596,6 +611,38 @@
     border: 0.5px solid var(--border-med); border-radius: 8px;
     font-family: inherit; font-size: 13px; cursor: pointer;
   }
+  .btn-pe {
+    padding: 8px 16px; border-radius: 8px;
+    border: 0.5px solid var(--blue-border);
+    background: var(--blue-bg); color: var(--blue-text);
+    font-size: 13px; font-family: inherit; cursor: pointer; white-space: nowrap;
+    transition: opacity 0.15s;
+  }
+  .btn-pe:hover { opacity: 0.8; }
+
+  /* PE modal */
+  .pe-modal {
+    background: var(--surface); border-radius: var(--radius-lg);
+    border: 0.5px solid var(--border); width: 100%; max-width: 640px;
+    padding: 24px; display: flex; flex-direction: column; gap: 16px;
+    margin: auto;
+  }
+  .pe-modal-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    flex-wrap: wrap; gap: 8px;
+  }
+  .pe-modal-header h2 { font-size: 16px; font-weight: 600; }
+  .pe-modal-header p  { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .pe-fields { display: flex; flex-direction: column; gap: 14px; }
+  .pe-row    { display: flex; gap: 12px; }
+  .pe-row .field { flex: 1; }
+  .pe-autofill-banner {
+    background: var(--blue-bg); border: 0.5px solid var(--blue-border);
+    color: var(--blue-text); border-radius: 8px; padding: 10px 14px;
+    font-size: 13px;
+  }
+  .pe-log-count { font-size: 12px; color: var(--text-hint); text-align: right; }
+
   .btn-nontask {
     padding: 8px 16px; border-radius: 8px; border: 0.5px solid var(--amber-border);
     background: var(--amber-bg); color: var(--amber-text);
@@ -831,9 +878,10 @@
 
     <div class="card" id="mainCard">
 
-      <!-- Non-task log bar -->
+      <!-- Quick-action bar -->
       <div class="nontask-bar" id="nontaskBar">
         <button class="btn-nontask" id="nontaskTriggerBtn" onclick="activateNonTaskMode()">Log Non-Task Entry</button>
+        <button class="btn-pe" id="peTriggerBtn" onclick="openPEModal()">ProductError Logger</button>
         <select id="nontaskType" style="display:none;" onchange="onNontaskTypeChange()">
           <option value="" disabled selected>Select type…</option>
           <option value="PTO">PTO</option>
@@ -904,11 +952,10 @@
         </div>
       </div><!-- /taskFormFields -->
 
-      <div class="field">
-        <label class="field-label" for="timeInput">Time tested</label>
+      <div class="field" style="margin-top:1.25rem;">
+        <label class="field-label" for="timeInput">Time tested <span style="font-weight:400;font-style:italic;color:var(--text-hint);font-size:11px;">(hrs/min or decimal)</span></label>
         <div class="time-row">
-          <input type="text" id="timeInput" placeholder="e.g. 1hr 30min" onblur="validateTimeField('timeInput','tested')">
-          <button class="time-toggle" onclick="toggleTimeMode('tested')" id="timeModeBtn">Switch to decimal (hrs)</button>
+          <input type="text" id="timeInput" placeholder="e.g. 1hr 30min" onblur="validateTimeField('timeInput')">
         </div>
       </div>
 
@@ -921,8 +968,7 @@
             <option value="lte">≤</option>
             <option value="about">≈</option>
           </select>
-          <input type="text" id="timeRemaining" placeholder="e.g. 0hr 45min" onblur="validateTimeField('timeRemaining','remaining')">
-          <button class="time-toggle" onclick="toggleTimeMode('remaining')" id="timeRemModeBtn">Switch to decimal (hrs)</button>
+          <input type="text" id="timeRemaining" placeholder="e.g. 0hr 45min" onblur="validateTimeField('timeRemaining')">
         </div>
       </div>
 
@@ -941,17 +987,17 @@
       </div>
       <div class="record-count" id="recCount"></div>
       <div class="masterlog-row">
-        <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:0;">
-          <span class="masterlog-count" id="masterLogCount"></span>
+        <div style="display:flex;flex-direction:column;gap:6px;width:100%;">
+          <div class="masterlog-count" id="masterLogCount"></div>
           <span id="masterLogBackupNote" style="font-size:11px;color:var(--text-hint);display:none;">
             ⚠️ Clearing browser site data will erase the master log. Export regularly to keep a safe copy.
           </span>
           <span id="masterLogLastExport" style="font-size:11px;color:var(--text-hint);"></span>
-        </div>
-        <div style="display:flex;gap:6px;flex-shrink:0;">
-          <button class="btn btn-masterlog" onclick="downloadMasterLog()" style="flex:unset;padding:7px 14px;">Download Master Log</button>
-          <button class="btn btn-masterlog" onclick="document.getElementById('masterLogImport').click()" style="flex:unset;padding:7px 14px;opacity:0.8;">Import Master Log</button>
-          <input type="file" id="masterLogImport" accept=".xlsx" style="display:none" onchange="importMasterLog(this)">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn btn-masterlog" onclick="downloadMasterLog()" style="flex:unset;padding:7px 14px;">Download Master Log</button>
+            <button class="btn btn-masterlog" onclick="document.getElementById('masterLogImport').click()" style="flex:unset;padding:7px 14px;opacity:0.8;">Import Master Log</button>
+            <input type="file" id="masterLogImport" accept=".xlsx" style="display:none" onchange="importMasterLog(this)">
+          </div>
         </div>
       </div>
     </div>
@@ -977,6 +1023,16 @@
       <table class="preview-table" id="previewTable"></table>
     </div>
     <div class="preview-total-row" id="previewTotal"></div>
+
+    <!-- P&E section (shown when P&E records exist for today) -->
+    <div id="previewPESection" style="display:none;">
+      <div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-top:4px;padding-top:12px;border-top:0.5px solid var(--border);">
+        ProductErrors Logged
+      </div>
+      <div class="preview-table-wrap" style="margin-top:8px;">
+        <table class="preview-table" id="previewPETable"></table>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1001,6 +1057,78 @@
       <button class="modal-yes" onclick="doReset()">Yes, reset</button>
       <button class="modal-no"  onclick="closeModal()">Cancel</button>
     </div>
+  </div>
+</div>
+
+<!-- ProductError Logger modal -->
+<div class="preview-overlay" id="peOverlay" onclick="handlePEBackdrop(event)">
+  <div class="pe-modal" onclick="event.stopPropagation()">
+
+    <div class="pe-modal-header">
+      <div>
+        <h2>ProductError Logger</h2>
+        <p>Log a P&amp;E found during testing</p>
+      </div>
+      <div class="preview-modal-actions">
+        <button class="btn btn-export" style="flex:unset;padding:7px 14px;font-size:13px;" onclick="savePE()">Save P&amp;E</button>
+        <button class="btn btn-masterlog" style="flex:unset;padding:7px 14px;font-size:13px;" onclick="downloadPELog()">↓ Download P&amp;E Log</button>
+        <button class="btn btn-reset"    style="flex:unset;padding:7px 14px;font-size:13px;" onclick="closePEModal()">Close</button>
+      </div>
+    </div>
+
+    <!-- Auto-fill banner -->
+    <div class="pe-autofill-banner" id="peAutofillBanner" style="display:none;">
+      <span id="peAutofillMsg"></span>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <button class="modal-yes" style="flex:unset;padding:6px 16px;font-size:13px;" onclick="peAcceptAutofill()">Yes, use it</button>
+        <button class="modal-no"  style="flex:unset;padding:6px 16px;font-size:13px;" onclick="peDismissAutofill()">No thanks</button>
+      </div>
+    </div>
+
+    <div class="pe-fields">
+      <div class="pe-row">
+        <div class="field">
+          <label class="field-label" for="peNumber">P&amp;E Number</label>
+          <input type="text" id="peNumber" placeholder="e.g. ProductErrors-1234" autocomplete="off">
+        </div>
+        <div class="field">
+          <label class="field-label" for="peDesc">Description</label>
+          <input type="text" id="peDesc" placeholder="Title / short description of the P&amp;E">
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="peDetails">Details</label>
+        <textarea id="peDetails" rows="4" placeholder="Steps to reproduce, expected vs actual behavior, environment details…"></textarea>
+      </div>
+
+      <div class="pe-row">
+        <div class="field">
+          <label class="field-label" for="peTaskFound">Task this was found in</label>
+          <input type="text" id="peTaskFound" placeholder="e.g. DYN-1234-567" autocomplete="off" list="peTaskSuggestions" oninput="filterPETaskSuggestions()">
+          <datalist id="peTaskSuggestions"></datalist>
+        </div>
+        <div class="field">
+          <label class="field-label" for="peTimeInput">Time Tested <span style="font-weight:400;font-style:italic;color:var(--text-hint);font-size:11px;">(hrs/min or decimal)</span></label>
+          <input type="text" id="peTimeInput" placeholder="e.g. 0hr 30min" autocomplete="off" onblur="autoConvertTime(this)">
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Task Created?</label>
+        <div class="status-row">
+          <button class="status-btn" id="peTaskCreatedYes" onclick="setPETaskCreated(true)">Yes</button>
+          <button class="status-btn" id="peTaskCreatedNo"  onclick="setPETaskCreated(false)">No</button>
+        </div>
+      </div>
+
+      <div class="field" id="peCreatedTaskField" style="display:none;">
+        <label class="field-label" for="peCreatedTask">Created Task Number</label>
+        <input type="text" id="peCreatedTask" placeholder="e.g. DYN-1234-568" autocomplete="off">
+      </div>
+    </div>
+
+    <div class="pe-log-count" id="peLogCount"></div>
   </div>
 </div>
 
@@ -1202,16 +1330,36 @@ async function clearMasterLog() {
 }
 
 async function updateMasterLogCount() {
-  const log = await loadMasterLog();
-  const el  = document.getElementById('masterLogCount');
+  const log    = await loadMasterLog();
+  const allPEs = await loadPERecords();
+  const el     = document.getElementById('masterLogCount');
   if (!el) return;
-  el.textContent = log.length
-    ? `Master log: ${log.length} record${log.length !== 1 ? 's' : ''} across all sessions`
-    : 'Master log: no records yet';
+
+  // Include both historical (master log) and current session records in the breakdown
+  const allTaskRecords = [...log, ...records];
+  const taskCount    = allTaskRecords.filter(r => r['Status'] !== 'Non-Task').length;
+  const nonTaskCount = allTaskRecords.filter(r => r['Status'] === 'Non-Task').length;
+  const peCount      = allPEs.length;
+  const total        = taskCount + nonTaskCount + peCount;
+
+  if (!total) {
+    el.innerHTML = '<span>Master log: no records yet</span>';
+  } else {
+    const items = [
+      taskCount    ? `<li>${taskCount} Task${taskCount === 1 ? '' : 's'}</li>`                         : '',
+      nonTaskCount ? `<li>${nonTaskCount} Non-Task Related log${nonTaskCount === 1 ? '' : 's'}</li>`   : '',
+      peCount      ? `<li>${peCount} P&amp;E${peCount === 1 ? '' : '\'s'}</li>`                        : '',
+    ].join('');
+    el.innerHTML = `
+      <span style="font-weight:600;">Master Log: ${total} ${total === 1 ? 'record' : 'records'} logged</span>
+      <ul style="margin:4px 0 0 12px;padding:0;list-style:disc;font-size:12px;color:var(--text-muted);display:flex;flex-direction:column;gap:2px;">
+        ${items}
+      </ul>`;
+  }
 
   // Show cache warning whenever there are records worth protecting
   const noteEl = document.getElementById('masterLogBackupNote');
-  if (noteEl) noteEl.style.display = log.length ? '' : 'none';
+  if (noteEl) noteEl.style.display = total ? '' : 'none';
 
   // Show last export date
   const lastExportEl = document.getElementById('masterLogLastExport');
@@ -1219,7 +1367,7 @@ async function updateMasterLogCount() {
     const lastExport = localStorage.getItem(MASTER_EXPORT_KEY);
     lastExportEl.textContent = lastExport
       ? `Last exported: ${lastExport}`
-      : log.length ? 'Not yet exported — download a copy to keep it safe.' : '';
+      : total ? 'Not yet exported — download a copy to keep it safe.' : '';
   }
 }
 
@@ -1238,7 +1386,6 @@ function saveFormState() {
       selectedDbs,
       selectedVers,
       verEnvs,
-      timeModes,
       moduleEnvs,
       moduleVers
     };
@@ -1264,18 +1411,6 @@ function restoreFormState() {
     if (s.timeRemainingQual) document.getElementById('timeRemainingQual').value = s.timeRemainingQual;
     if (s.notes)             document.getElementById('notes').value             = s.notes;
 
-    // Time mode toggles
-    if (s.timeModes) {
-      timeModes = s.timeModes;
-      if (timeModes.tested === 'dec') {
-        document.getElementById('timeInput').placeholder   = 'e.g. 1.50';
-        document.getElementById('timeModeBtn').textContent = 'Switch to h/m';
-      }
-      if (timeModes.remaining === 'dec') {
-        document.getElementById('timeRemaining').placeholder  = 'e.g. 0.75';
-        document.getElementById('timeRemModeBtn').textContent = 'Switch to h/m';
-      }
-    }
 
     // Environment buttons (multi-select)
     const envKeyMap = { 'Vetting':'vetting', 'Alpha':'alpha', 'Beta':'beta', 'Release':'release' };
@@ -1461,7 +1596,7 @@ function updateSidebar() {
   const list  = document.getElementById('sidebarList');
   const total = document.getElementById('sidebarTotal');
 
-  if (!records.length) {
+  if (!records.length && !peTodayRecords.length) {
     list.innerHTML = '<div class="sidebar-empty">No entries yet.<br>Save a task to see it here.</div>';
     total.textContent = '—';
     return;
@@ -1469,7 +1604,7 @@ function updateSidebar() {
 
   let totalHours = 0;
 
-  list.innerHTML = records.map((r, i) => {
+  const taskHTML = records.map((r, i) => {
     const hrs = parseTimeToHours(r['Time Tested']);
     totalHours += hrs;
     const timeLabel = hrs > 0 ? formatForSidebar(hrs) : '—';
@@ -1522,9 +1657,50 @@ function updateSidebar() {
     </div>`;
   }).join('');
 
+  // ── P&E section ────────────────────────────────────────────────────
+  let peHTML = '';
+  if (peTodayRecords.length) {
+    if (records.length) peHTML += `<div class="sidebar-section-divider">ProductErrors</div>`;
+    peHTML += peTodayRecords.map(pe => {
+      const peHrs   = parseTimeToHours(pe['Time Tested']);
+      totalHours   += peHrs;
+      const peLabel = pe['P&E Number'] !== '—' ? pe['P&E Number'] : (pe['Description'] || 'P&E');
+      const peTime  = peHrs > 0 ? formatForSidebar(peHrs) : '—';
+      const rawTime = (pe['Time Tested'] && pe['Time Tested'] !== '—') ? pe['Time Tested'] : '';
+
+      if (editingPEId === pe.id) {
+        const displayTime = editingPETempTime !== null ? editingPETempTime : rawTime;
+        return `<div class="sidebar-entry sidebar-entry--editing">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="sidebar-pe-label">P&amp;E</span>
+            <span class="sidebar-entry-task">${peLabel}</span>
+          </div>
+          <div class="sidebar-edit-label">Time Spent</div>
+          <div class="sidebar-edit-row">
+            <input class="sidebar-time-input" id="sidebarPEEditInput"
+                   value="${displayTime}" placeholder="e.g. 0hr 30min"
+                   onkeydown="if(event.key==='Enter')savePEEdit(${pe.id});if(event.key==='Escape')cancelPEEdit();">
+            <button class="sidebar-edit-save"   onclick="savePEEdit(${pe.id})" title="Save">✓</button>
+            <button class="sidebar-edit-cancel" onclick="cancelPEEdit()"       title="Cancel">✕</button>
+          </div>
+        </div>`;
+      }
+
+      return `<div class="sidebar-entry">
+        <span class="sidebar-pe-label">P&amp;E</span>
+        <span class="sidebar-entry-task" style="margin-left:4px;" title="${peLabel}">${peLabel}</span>
+        <div class="sidebar-entry-right">
+          <span class="sidebar-entry-time">${peTime}</span>
+          <button class="sidebar-edit-btn" onclick="startPEEdit(${pe.id})" title="Edit time">✏</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  list.innerHTML = taskHTML + peHTML;
   total.textContent = formatForSidebar(totalHours);
 
-  if (editingIndex === null) list.scrollTop = list.scrollHeight;
+  if (editingIndex === null && editingPEId === null) list.scrollTop = list.scrollHeight;
 }
 
 // ── Form state helpers ───────────────────────────────────────────────
@@ -1839,45 +2015,32 @@ function setStatus(s) {
   saveFormState();
 }
 
-let timeModes = { tested: 'hm', remaining: 'hm' };
 
-function isValidTimeInput(str, mode) {
+function isValidTimeInput(str) {
   if (!str || str.trim() === '') return true; // empty is always fine
   const s = str.trim();
-  if (mode === 'dec') {
-    const n = parseFloat(s);
-    return !isNaN(n) && isFinite(n) && n >= 0 && String(s).match(/^\d+(\.\d+)?$/);
-  }
   const hmMatch = s.match(/^(?:(\d+(?:\.\d+)?)\s*h(?:rs?)?)?\s*(?:(\d+(?:\.\d+)?)\s*m(?:ins?)?)?$/i);
   return !!(hmMatch && (hmMatch[1] || hmMatch[2]));
 }
 
-function validateTimeField(fieldId, modeKey) {
-  const val = document.getElementById(fieldId).value.trim();
+// Auto-convert a plain decimal entry (e.g. "0.50") to hrs/min format on blur
+function autoConvertTime(inputEl) {
+  const val = (inputEl.value || '').trim();
   if (!val) return;
-  if (!isValidTimeInput(val, timeModes[modeKey])) {
-    if (timeModes[modeKey] === 'dec') {
-      showToast('Invalid format. For decimal, enter hours as a number — e.g. 1.50 or 2');
-    } else {
-      showToast('Invalid format. Enter time as — e.g. 1hr 30min, 2hrs, or 45mins');
-    }
+  if (/^\d+(\.\d+)?$/.test(val)) {
+    const h = parseFloat(val);
+    if (!isNaN(h) && h >= 0) inputEl.value = formatHM(h);
   }
 }
 
-function toggleTimeMode(field) {
-  const inputId = field === 'tested' ? 'timeInput'     : 'timeRemaining';
-  const btnId   = field === 'tested' ? 'timeModeBtn'   : 'timeRemModeBtn';
-  const input   = document.getElementById(inputId);
-  const btn     = document.getElementById(btnId);
-
-  const hours = parseTimeToHours(input.value.trim());
-  timeModes[field] = timeModes[field] === 'hm' ? 'dec' : 'hm';
-  const isDec = timeModes[field] === 'dec';
-
-  input.placeholder = isDec ? 'e.g. 1.50' : 'e.g. 1hr 30min';
-  btn.textContent   = isDec ? 'Switch to h/m' : 'Switch to decimal (hrs)';
-  input.value       = hours > 0 ? (isDec ? formatDec(hours) : formatHM(hours)) : '';
-  saveFormState();
+function validateTimeField(fieldId) {
+  const el  = document.getElementById(fieldId);
+  const val = el.value.trim();
+  if (!val) return;
+  autoConvertTime(el);
+  if (!isValidTimeInput(el.value.trim())) {
+    showToast('Invalid format. Enter time as — e.g. 1hr 30min, 2hrs, or 45mins');
+  }
 }
 
 function getCheckedModules() {
@@ -1947,6 +2110,7 @@ function submitEntry() {
     deactivateNonTaskMode();
     updateCount();
     updateSidebar();
+    updateMasterLogCount();
     showToast(`${label} entry saved!`);
     return;
   }
@@ -1982,6 +2146,7 @@ function submitEntry() {
   clearForm();
   updateCount();
   updateSidebar();
+  updateMasterLogCount();
   showToast('Entry saved! Ready for next entry.');
 }
 
@@ -2005,11 +2170,8 @@ function clearForm() {
   document.getElementById('timeRemaining').value     = '';
   document.getElementById('timeRemainingQual').value = '';
   document.getElementById('notes').value             = '';
-  timeModes = { tested: 'hm', remaining: 'hm' };
-  document.getElementById('timeModeBtn').textContent    = 'Switch to decimal (hrs)';
-  document.getElementById('timeRemModeBtn').textContent = 'Switch to decimal (hrs)';
-  document.getElementById('timeInput').placeholder      = 'e.g. 1hr 30min';
-  document.getElementById('timeRemaining').placeholder  = 'e.g. 0hr 45min';
+  document.getElementById('timeInput').placeholder     = 'e.g. 1hr 30min';
+  document.getElementById('timeRemaining').placeholder = 'e.g. 0hr 45min';
   document.getElementById('moduleArea').innerHTML =
     '<span class="no-modules">Enter a task number to see available modules</span>';
   selectedStatus = '';
@@ -2042,7 +2204,69 @@ function resetDay() {
 }
 
 // ── Excel export ─────────────────────────────────────────────────────
-async function buildWorkbook(data, isMaster = false) {
+async function loadPERecordsToday() {
+  const today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+  const all   = await loadPERecords();
+  return all.filter(r => r['Log Date'] === today);
+}
+
+function addPESheetToWorkbook(wb, peData) {
+  if (!peData || !peData.length) return;
+  const peCols = ['Log Date','P&E Number','Description','Details','Task Found In','Task Created','Created Task Number'];
+  const ws     = wb.addWorksheet('P&E Log');
+  const today  = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+
+  ws.addRow(['ProductErrors Log — ' + today]);
+  ws.mergeCells(1, 1, 1, peCols.length);
+  const titleCell = ws.getCell(1, 1);
+  titleCell.font      = { name:'Arial', size:14, bold:true, color:{ argb:'FF5C1A1A' } };
+  titleCell.fill      = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFF5D9D9' } };
+  titleCell.alignment = { horizontal:'center', vertical:'middle' };
+  ws.getRow(1).height = 28;
+
+  ws.addRow(peCols);
+  const headerRow = ws.getRow(2);
+  headerRow.height = 22;
+  peCols.forEach((_, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.font      = { name:'Arial', size:11, bold:true, color:{ argb:'FFFFFFFF' } };
+    cell.fill      = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFA32E2E' } };
+    cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+    cell.border    = { bottom:{ style:'medium', color:{ argb:'FF5C1A1A' } } };
+  });
+
+  peData.forEach((record, idx) => {
+    ws.addRow(peCols.map(c => record[c] || ''));
+    const row = ws.getRow(idx + 3);
+    peCols.forEach((_, i) => {
+      const cell = row.getCell(i + 1);
+      cell.font      = { name:'Arial', size:11 };
+      cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+      if (idx % 2 !== 0) cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFFBEAEA' } };
+    });
+  });
+
+  ws.columns = peCols.map(col => {
+    const dataMax = peData.reduce((m, r) => Math.max(m, String(r[col]||'').length), 0);
+    return { width: Math.max(col.length, dataMax) + 4 };
+  });
+
+  const totalRows = 2 + peData.length;
+  const thick = { style:'thick', color:{ argb:'FF5C1A1A' } };
+  for (let r = 1; r <= totalRows; r++) {
+    for (let c = 1; c <= peCols.length; c++) {
+      const cell = ws.getCell(r, c);
+      const border = Object.assign({}, cell.border || {});
+      if (r === 1)         border.top    = thick;
+      if (r === totalRows) border.bottom = thick;
+      if (c === 1)         border.left   = thick;
+      if (c === peCols.length) border.right = thick;
+      cell.border = border;
+    }
+  }
+}
+
+async function buildWorkbook(data, isMaster = false, peData = []) {
   const cols  = isMaster
     ? ['Log Date','Task Number','Task Description','Environment(s)','SQL or ORA','15 or 15U',
        'Modules Tested','Status','Time Tested','Remaining Time (est)','Notes']
@@ -2110,6 +2334,59 @@ async function buildWorkbook(data, isMaster = false) {
     }
   }
 
+  // ── P&E section appended to same sheet ──────────────────────────────
+  if (peData && peData.length) {
+    const peCols = ['P&E Number','Description','Details','Task Found In','Task Created','Created Task Number'];
+
+    // Blank separator row
+    ws.addRow([]);
+    const sepRowNum = totalRows + 2;
+
+    // Section header (merged across task columns width)
+    ws.addRow(['ProductErrors']);
+    const peHeaderRowNum = sepRowNum + 1;
+    ws.mergeCells(peHeaderRowNum, 1, peHeaderRowNum, totalCols);
+    const peHeaderCell = ws.getCell(peHeaderRowNum, 1);
+    peHeaderCell.font      = { name:'Arial', size:13, bold:true, color:{ argb:'FF5C1A1A' } };
+    peHeaderCell.fill      = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFF5D9D9' } };
+    peHeaderCell.alignment = { horizontal:'center', vertical:'middle' };
+    ws.getRow(peHeaderRowNum).height = 24;
+
+    // P&E column headers
+    ws.addRow(peCols);
+    const peColHeaderRowNum = peHeaderRowNum + 1;
+    const peColHeaderRow    = ws.getRow(peColHeaderRowNum);
+    peColHeaderRow.height   = 20;
+    peCols.forEach((_, i) => {
+      const cell = peColHeaderRow.getCell(i + 1);
+      cell.font      = { name:'Arial', size:11, bold:true, color:{ argb:'FFFFFFFF' } };
+      cell.fill      = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFA32E2E' } };
+      cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+    });
+
+    // P&E data rows
+    peData.forEach((record, idx) => {
+      ws.addRow(peCols.map(c => record[c] || ''));
+      const row = ws.getRow(peColHeaderRowNum + 1 + idx);
+      peCols.forEach((_, i) => {
+        const cell = row.getCell(i + 1);
+        cell.font      = { name:'Arial', size:11 };
+        cell.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+        if (idx % 2 !== 0) cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFFBEAEA' } };
+      });
+    });
+
+    // Update column widths to account for P&E content too
+    ws.columns = cols.map((col, i) => {
+      const taskMax = data.reduce((m, r)  => Math.max(m, String(r[col]||'').length), 0);
+      const peCol   = peCols[i];
+      const peMax   = peCol
+        ? peData.reduce((m, r) => Math.max(m, String(r[peCol]||'').length), peCol.length)
+        : 0;
+      return { width: Math.max(col.length, taskMax, peMax) + 4 };
+    });
+  }
+
   return wb;
 }
 
@@ -2126,7 +2403,8 @@ async function downloadWorkbook(wb, filename) {
 let _previewMode = ''; // 'midday' | 'wrapup'
 
 async function openPreview(mode) {
-  if (!records.length) { showToast('No records to export yet.'); return; }
+  const todayPEsCheck = await loadPERecordsToday();
+  if (!records.length && !todayPEsCheck.length) { showToast('No records to export yet.'); return; }
   _previewMode = mode;
 
   const cols = ['Task Number','Task Description','Environment(s)','SQL or ORA','15 or 15U',
@@ -2147,6 +2425,20 @@ async function openPreview(mode) {
   const totalHrs = records.reduce((sum, r) => sum + parseTimeToHours(r['Time Tested']), 0);
   document.getElementById('previewTotal').innerHTML =
     totalHrs > 0 ? `Total time tested: <strong>${formatForSidebar(totalHrs)}</strong>` : '';
+
+  // P&E records for today
+  const todayPEs  = await loadPERecordsToday();
+  const peSection = document.getElementById('previewPESection');
+  const peTable   = document.getElementById('previewPETable');
+  if (todayPEs.length) {
+    const peCols = ['P&E Number','Description','Details','Task Found In','Task Created','Created Task Number'];
+    peTable.innerHTML =
+      `<thead><tr>${peCols.map(c => `<th>${c}</th>`).join('')}</tr></thead>` +
+      `<tbody>${todayPEs.map(r => `<tr>${peCols.map(c => `<td>${r[c] ?? '—'}</td>`).join('')}</tr>`).join('')}</tbody>`;
+    peSection.style.display = '';
+  } else {
+    peSection.style.display = 'none';
+  }
 
   if (mode === 'midday') {
     document.getElementById('previewTitle').textContent    = 'Mid-Day Snapshot';
@@ -2202,19 +2494,37 @@ function dismissWrapupClose() {
   _previewMode = '';
 }
 
-function copyPreviewTable(btn) {
-  const cols = ['Task Number','Task Description','Environment(s)','SQL or ORA','15 or 15U',
-                 'Modules Tested','Status','Time Tested','Remaining Time (est)','Notes'];
+async function copyPreviewTable(btn) {
+  const taskCols = ['Task Number','Task Description','Environment(s)','SQL or ORA','15 or 15U',
+                    'Modules Tested','Status','Time Tested','Remaining Time (est)','Notes'];
+  const peCols   = ['P&E Number','Description','Details','Task Found In','Task Created','Created Task Number','Time Tested'];
 
-  const thStyle = 'background:#f0efe9;font-weight:600;padding:6px 10px;border:1px solid #ccc;white-space:nowrap;font-size:12px;color:#1a1a18;';
-  const tdStyle = 'background:#ffffff;padding:6px 10px;border:1px solid #ccc;font-size:12px;vertical-align:top;color:#1a1a18;';
-  const headerRow = `<tr>${cols.map(c => `<th style="${thStyle}">${c}</th>`).join('')}</tr>`;
-  const bodyRows  = records.map(r =>
-    `<tr>${cols.map(c => `<td style="${tdStyle}">${r[c] ?? '—'}</td>`).join('')}</tr>`
+  const thStyle    = 'background:#f0efe9;font-weight:600;padding:6px 10px;border:1px solid #ccc;white-space:nowrap;font-size:12px;color:#1a1a18;';
+  const tdStyle    = 'background:#ffffff;padding:6px 10px;border:1px solid #ccc;font-size:12px;vertical-align:top;color:#1a1a18;';
+  const peThStyle  = 'background:#f5d9d9;font-weight:600;padding:6px 10px;border:1px solid #ccc;white-space:nowrap;font-size:12px;color:#5c1a1a;';
+  const peTdStyle  = 'background:#ffffff;padding:6px 10px;border:1px solid #ccc;font-size:12px;vertical-align:top;color:#1a1a18;';
+
+  // Build task table HTML
+  const taskHeader = `<tr>${taskCols.map(c => `<th style="${thStyle}">${c}</th>`).join('')}</tr>`;
+  const taskBody   = records.map(r =>
+    `<tr>${taskCols.map(c => `<td style="${tdStyle}">${r[c] ?? '—'}</td>`).join('')}</tr>`
   ).join('');
-  const html = `<table style="border-collapse:collapse;font-family:sans-serif;background:#ffffff;">${headerRow}${bodyRows}</table>`;
+  let html = `<table style="border-collapse:collapse;font-family:sans-serif;background:#ffffff;">${taskHeader}${taskBody}</table>`;
 
-  const textRows = [cols, ...records.map(r => cols.map(c => r[c] ?? '—'))];
+  let textRows = [taskCols, ...records.map(r => taskCols.map(c => r[c] ?? '—'))];
+
+  // Append P&E section if any exist today
+  const todayPEs = await loadPERecordsToday();
+  if (todayPEs.length) {
+    const peHeader = `<tr>${peCols.map(c => `<th style="${peThStyle}">${c}</th>`).join('')}</tr>`;
+    const peBody   = todayPEs.map(r =>
+      `<tr>${peCols.map(c => `<td style="${peTdStyle}">${r[c] ?? '—'}</td>`).join('')}</tr>`
+    ).join('');
+    html += `<br><p style="font-family:sans-serif;font-weight:600;color:#5c1a1a;margin:8px 0 4px;">ProductErrors</p>
+             <table style="border-collapse:collapse;font-family:sans-serif;background:#ffffff;">${peHeader}${peBody}</table>`;
+    textRows.push([], ['— ProductErrors —'], peCols, ...todayPEs.map(r => peCols.map(c => r[c] ?? '—')));
+  }
+
   const text = textRows.map(row => row.join('\t')).join('\n');
 
   const confirm = () => {
@@ -2223,23 +2533,18 @@ function copyPreviewTable(btn) {
     setTimeout(() => btn.textContent = orig, 2000);
   };
 
-  // 1. ClipboardItem — Chrome/Edge use Blob directly; Safari requires Promise<Blob>.
-  //    Called synchronously (no await before this) so user-gesture context is preserved.
+  // ClipboardItem — synchronously constructed before any await so Safari user-gesture is preserved
   if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
     try {
-      const htmlBlob  = new Blob([html], { type: 'text/html' });
-      const textBlob  = new Blob([text], { type: 'text/plain' });
-      // Pass as Promise<Blob> — accepted by both Chrome and Safari
       const item = new ClipboardItem({
-        'text/html':  Promise.resolve(htmlBlob),
-        'text/plain': Promise.resolve(textBlob)
+        'text/html':  Promise.resolve(new Blob([html], { type: 'text/html' })),
+        'text/plain': Promise.resolve(new Blob([text], { type: 'text/plain' }))
       });
       navigator.clipboard.write([item]).then(confirm).catch(() => execCommandCopy(html, text, confirm));
       return;
-    } catch(_) { /* ClipboardItem constructor failed — fall through */ }
+    } catch(_) {}
   }
 
-  // 2. execCommand fallback (Safari < 13.1, Firefox) — contenteditable preserves HTML
   execCommandCopy(html, text, confirm);
 }
 
@@ -2287,7 +2592,9 @@ function execCommandCopy(html, text, onSuccess) {
 
 async function previewDownload() {
   if (_previewMode === 'midday') {
-    const wb    = await buildWorkbook(records);
+    const todayPEs = await loadPERecordsToday();
+    const wb       = await buildWorkbook(records, false, todayPEs);
+    addPESheetToWorkbook(wb, todayPEs);
     const now   = new Date();
     const stamp = now.toISOString().slice(0,10) + '_' +
       String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0');
@@ -2302,7 +2609,9 @@ async function previewDownload() {
 
 async function midDayDownload() {
   if (!records.length) { showToast('No records to export yet.'); return; }
-  const wb    = await buildWorkbook(records);
+  const todayPEs = await loadPERecordsToday();
+  const wb       = await buildWorkbook(records, false, todayPEs);
+  addPESheetToWorkbook(wb, todayPEs);
   const now   = new Date();
   const stamp = now.toISOString().slice(0,10) + '_' +
     String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0');
@@ -2311,9 +2620,13 @@ async function midDayDownload() {
 }
 
 async function exportExcel() {
-  if (!records.length) { showToast('No records to export yet.'); return; }
+  const todayPEsCheck = await loadPERecordsToday();
+  if (!records.length && !todayPEsCheck.length) { showToast('No records to export yet.'); return; }
+  if (!records.length) { await clearDay(); return; } // P&Es only — go straight to clear
   await appendToMasterLog(records);
-  const wb   = await buildWorkbook(records);
+  const todayPEs = await loadPERecordsToday();
+  const wb       = await buildWorkbook(records, false, todayPEs);
+  addPESheetToWorkbook(wb, todayPEs);
   const date = new Date().toISOString().slice(0, 10);
   await downloadWorkbook(wb, `task-log-${date}.xlsx`);
   resetDay();
@@ -2321,9 +2634,11 @@ async function exportExcel() {
 }
 
 async function downloadMasterLog() {
-  const log = await loadMasterLog();
-  if (!log.length) { showToast('No master log records yet. Wrap up a day first.'); return; }
-  const wb = await buildWorkbook(log, true);
+  const log    = await loadMasterLog();
+  const allPEs = await loadPERecords();
+  if (!log.length && !allPEs.length) { showToast('No master log records yet. Wrap up a day first.'); return; }
+  const wb = await buildWorkbook(log.length ? log : [], true, allPEs);
+  addPESheetToWorkbook(wb, allPEs);
   const date = new Date().toISOString().slice(0, 10);
   await downloadWorkbook(wb, `task-log-master-${date}.xlsx`);
   try { localStorage.setItem(MASTER_EXPORT_KEY, new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })); } catch(_) {}
@@ -2341,6 +2656,218 @@ function updateCount() {
 function confirmReset() { document.getElementById('overlay').classList.add('active'); }
 function closeModal()    { document.getElementById('overlay').classList.remove('active'); }
 
+// ── ProductError Logger ───────────────────────────────────────────────
+let peTaskCreated   = false;
+let peTodayRecords  = [];       // cached today's P&E records for sidebar
+let editingPEId     = null;     // ID of PE being edited in sidebar
+let editingPETempTime = null;   // in-progress time value for PE edit
+
+async function refreshPETodayRecords() {
+  peTodayRecords = await loadPERecordsToday();
+  updateSidebar();
+}
+
+async function updatePERecord(id, updates) {
+  try {
+    const db    = await openPEDB();
+    const tx    = db.transaction('records', 'readwrite');
+    const store = tx.objectStore('records');
+    const req   = store.get(id);
+    await new Promise((res, rej) => { req.onsuccess = res; req.onerror = rej; });
+    const record = req.result;
+    if (record) { Object.assign(record, updates); store.put(record); }
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = e => rej(e.target.error); });
+  } catch(_) {}
+}
+
+function startPEEdit(id) {
+  editingIndex  = null; // cancel any task edit
+  editingPEId   = id;
+  editingPETempTime = null;
+  updateSidebar();
+  setTimeout(() => {
+    const input = document.getElementById('sidebarPEEditInput');
+    if (input) { input.focus(); input.select(); }
+  }, 0);
+}
+
+async function savePEEdit(id) {
+  const input = document.getElementById('sidebarPEEditInput');
+  if (!input) return;
+  await updatePERecord(id, { 'Time Tested': input.value.trim() || '—' });
+  editingPEId       = null;
+  editingPETempTime = null;
+  await refreshPETodayRecords();
+}
+
+function cancelPEEdit() {
+  editingPEId       = null;
+  editingPETempTime = null;
+  updateSidebar();
+}
+
+// IndexedDB for P&E records
+function openPEDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('taskLoggerPE', 1);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('records'))
+        db.createObjectStore('records', { keyPath: 'id', autoIncrement: true });
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+async function savePERecord(record) {
+  const db    = await openPEDB();
+  const tx    = db.transaction('records', 'readwrite');
+  tx.objectStore('records').add(record);
+  await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = e => rej(e.target.error); });
+}
+async function loadPERecords() {
+  try {
+    const db  = await openPEDB();
+    const tx  = db.transaction('records', 'readonly');
+    const req = tx.objectStore('records').getAll();
+    return await new Promise((res, rej) => { req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error); });
+  } catch(_) { return []; }
+}
+
+async function openPEModal() {
+  document.getElementById('peOverlay').classList.add('active');
+  resetPEForm();
+  await populatePETaskSuggestions();
+  updatePELogCount();
+
+  // Check if there's a current task number to offer auto-fill
+  const currentTask = document.getElementById('taskNum').value.trim();
+  // Also look at today's session records
+  const sessionTasks = [...new Set(records.filter(r => r['Status'] !== 'Non-Task').map(r => r['Task Number']).filter(t => t && t !== '—'))];
+  const candidateTasks = currentTask
+    ? [currentTask, ...sessionTasks.filter(t => t !== currentTask)]
+    : sessionTasks;
+
+  const banner  = document.getElementById('peAutofillBanner');
+  const msgEl   = document.getElementById('peAutofillMsg');
+  if (candidateTasks.length) {
+    const display = candidateTasks.length === 1
+      ? `Found task <strong>${candidateTasks[0]}</strong> in your current log. Auto-fill the "Task Found In" field?`
+      : `Found tasks in your current log (<strong>${candidateTasks.join(', ')}</strong>). Auto-fill with the most recent?`;
+    msgEl.innerHTML = display;
+    banner.style.display = '';
+    banner._candidates = candidateTasks;
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+function closePEModal() {
+  document.getElementById('peOverlay').classList.remove('active');
+}
+function handlePEBackdrop(e) {
+  if (e.target === document.getElementById('peOverlay')) closePEModal();
+}
+
+function resetPEForm() {
+  ['peNumber','peDesc','peDetails','peTaskFound','peTimeInput','peCreatedTask'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  peTaskCreated = false;
+  document.getElementById('peTaskCreatedYes').className = 'status-btn';
+  document.getElementById('peTaskCreatedNo').className  = 'status-btn';
+  document.getElementById('peCreatedTaskField').style.display = 'none';
+  document.getElementById('peTaskFound').readOnly = false;
+}
+
+function peAcceptAutofill() {
+  const banner     = document.getElementById('peAutofillBanner');
+  const candidates = banner._candidates || [];
+  if (candidates.length) {
+    document.getElementById('peTaskFound').value    = candidates[0];
+    document.getElementById('peTaskFound').readOnly = true;
+  }
+  banner.style.display = 'none';
+}
+function peDismissAutofill() {
+  document.getElementById('peAutofillBanner').style.display = 'none';
+  document.getElementById('peTaskFound').readOnly = false;
+}
+
+function setPETaskCreated(yes) {
+  peTaskCreated = yes;
+  document.getElementById('peTaskCreatedYes').className = yes  ? 'status-btn active-completed' : 'status-btn';
+  document.getElementById('peTaskCreatedNo').className  = !yes ? 'status-btn active-sentback'  : 'status-btn';
+  document.getElementById('peCreatedTaskField').style.display = yes ? '' : 'none';
+}
+
+async function populatePETaskSuggestions() {
+  const masterLog    = await loadMasterLog();
+  const masterTasks  = masterLog.filter(r => r['Status'] !== 'Non-Task').map(r => r['Task Number']).filter(Boolean);
+  const sessionTasks = records.filter(r => r['Status'] !== 'Non-Task').map(r => r['Task Number']).filter(Boolean);
+  const allTasks     = [...new Set([...sessionTasks, ...masterTasks])].filter(t => t !== '—');
+  const dl = document.getElementById('peTaskSuggestions');
+  dl.innerHTML = allTasks.map(t => `<option value="${t}">`).join('');
+}
+
+function filterPETaskSuggestions() {
+  // Native datalist handles filtering; this hook is available for future enhancements
+}
+
+async function savePE() {
+  const num  = document.getElementById('peNumber').value.trim();
+  const desc = document.getElementById('peDesc').value.trim();
+  if (!num && !desc) { showToast('Please enter at least a P&E number or description.'); return; }
+
+  const today  = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+  const record = {
+    'Log Date':            today,
+    'P&E Number':         num   || '—',
+    'Description':        desc  || '—',
+    'Details':            document.getElementById('peDetails').value.trim()    || '—',
+    'Task Found In':      document.getElementById('peTaskFound').value.trim()  || '—',
+    'Task Created':       peTaskCreated ? 'Yes' : 'No',
+    'Created Task Number': peTaskCreated
+                            ? (document.getElementById('peCreatedTask').value.trim() || '—')
+                            : '—',
+    'Time Tested':        document.getElementById('peTimeInput').value.trim() || '—',
+  };
+  await savePERecord(record);
+  showToast(`P&E "${record['P&E Number']}" logged.`);
+  resetPEForm();
+  updatePELogCount();
+  updateMasterLogCount();
+  await refreshPETodayRecords();
+}
+
+async function updatePELogCount() {
+  const records = await loadPERecords();
+  const el = document.getElementById('peLogCount');
+  if (el) el.textContent = records.length
+    ? `${records.length} P&E record${records.length !== 1 ? 's' : ''} in log`
+    : '';
+}
+
+async function downloadPELog() {
+  const peRecords = await loadPERecords();
+  if (!peRecords.length) { showToast('No P&E records to download yet.'); return; }
+  const cols = ['Log Date','P&E Number','Description','Details','Task Found In','Task Created','Created Task Number'];
+  const wb   = new ExcelJS.Workbook();
+  const ws   = wb.addWorksheet('P&E Log');
+  ws.columns = cols.map(c => ({ header: c, key: c, width: Math.max(c.length + 4, 20) }));
+  ws.getRow(1).font = { bold: true };
+  ws.getRow(1).fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFE8E8E8' } };
+  peRecords.forEach(r => ws.addRow(cols.map(c => r[c] ?? '—')));
+  const buf  = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const date = new Date().toISOString().slice(0,10);
+  a.href = url; a.download = `pe-log-${date}.xlsx`; a.click();
+  URL.revokeObjectURL(url);
+  showToast('P&E log downloaded.');
+}
+
 // ── Non-task mode ────────────────────────────────────────────────────
 let nonTaskMode = false;
 
@@ -2350,6 +2877,7 @@ function activateNonTaskMode() {
   document.getElementById('taskFormFields').classList.add('form-locked');
   document.getElementById('timeRemainingField').classList.add('form-locked');
   document.getElementById('nontaskTriggerBtn').style.display = 'none';
+  document.getElementById('peTriggerBtn').style.display      = 'none';
   document.getElementById('nontaskType').style.display       = '';
   document.getElementById('nontaskCancelBtn').style.display  = '';
 }
@@ -2367,6 +2895,7 @@ function deactivateNonTaskMode() {
   document.getElementById('taskFormFields').classList.remove('form-locked');
   document.getElementById('timeRemainingField').classList.remove('form-locked');
   document.getElementById('nontaskTriggerBtn').style.display = '';
+  document.getElementById('peTriggerBtn').style.display      = '';
   document.getElementById('nontaskType').style.display       = 'none';
   document.getElementById('nontaskType').value               = '';
   document.getElementById('nontaskOtherInput').style.display = 'none';
@@ -2511,6 +3040,7 @@ function showToast(msg, duration = 2800) {
 // ── Init ─────────────────────────────────────────────────────────────
 loadFromStorage();
 updateMasterLogCount();
+refreshPETodayRecords();
 
 // Request persistent storage so the browser won't auto-evict master log data
 if (navigator.storage && navigator.storage.persist) {
