@@ -1315,15 +1315,20 @@ async function importMasterLog(inputEl) {
     const today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
     const todayRecords = imported.filter(r => r['Log Date'] === today);
     if (todayRecords.length) {
-      // Strip Log Date before adding to session (session records don't carry it)
+      // Build a fingerprint of every existing session record to detect duplicates
+      const fingerprint = r => [
+        r['Task Number'], r['Task Description'], r['Environment(s)'],
+        r['SQL or ORA'], r['15 or 15U'], r['Modules Tested'],
+        r['Status'], r['Time Tested']
+      ].join('|');
+      const existingPrints = new Set(records.map(fingerprint));
+
       todayRecords.forEach(r => {
         const { 'Log Date': _, id, ...sessionRecord } = r;
-        // Avoid duplicates — skip if an entry with the same Task Number + Status already exists
-        const isDuplicate = records.some(existing =>
-          existing['Task Number'] === sessionRecord['Task Number'] &&
-          existing['Status']      === sessionRecord['Status']
-        );
-        if (!isDuplicate) records.push(sessionRecord);
+        if (!existingPrints.has(fingerprint(sessionRecord))) {
+          records.push(sessionRecord);
+          existingPrints.add(fingerprint(sessionRecord)); // guard against dupes within the import itself
+        }
       });
       saveToStorage();
       updateCount();
