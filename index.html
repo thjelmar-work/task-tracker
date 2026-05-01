@@ -1889,16 +1889,19 @@ function updateModules() {
   const taskVal = document.getElementById('taskNum').value;
   const prefix  = getPrefix(taskVal);
   const area    = document.getElementById('moduleArea');
+
+  // Always check for a paused entry on any valid-format task number,
+  // regardless of whether the prefix maps to a known module group
+  if (/^[A-Za-z]{2,4}-\d{4}-\d{3}$/.test(taskVal.trim())) {
+    clearTimeout(_resumeCheckTimer);
+    _resumeCheckTimer = setTimeout(checkForPausedEntry, 400);
+  }
+
   if (!prefix) {
     area.innerHTML = '<span class="no-modules">Enter a task number to see available modules</span>';
     moduleEnvs = {};
     saveFormState();
     return;
-  }
-  // Check for a paused entry once the full format is valid, debounced
-  if (/^[A-Za-z]{2,4}-\d{4}-\d{3}$/.test(taskVal.trim())) {
-    clearTimeout(_resumeCheckTimer);
-    _resumeCheckTimer = setTimeout(checkForPausedEntry, 400);
   }
   if (!selectedDbs.length) {
     area.innerHTML = '<span class="no-modules">Select SQL or ORA to see available modules</span>';
