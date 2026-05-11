@@ -1262,16 +1262,36 @@ async function appendToMasterLog(newRecords) {
 
 async function mergeIntoMasterLog(importedRecords) {
   try {
-    const db    = await openMasterLogDB();
-    const tx    = db.transaction('records', 'readwrite');
-    const store = tx.objectStore('records');
+    const db       = await openMasterLogDB();
+    // Load existing records to avoid storing duplicates
+    const existing = await new Promise((res, rej) => {
+      const tx  = db.transaction('records', 'readonly');
+      const req = tx.objectStore('records').getAll();
+      req.onsuccess = () => res(req.result);
+      req.onerror   = () => rej(req.error);
+    });
+    const norm = v => String(v ?? '').trim();
+    const fp   = r => [
+      norm(r['Task Number']).toUpperCase(), norm(r['Task Description']),
+      norm(r['Environment(s)']),            norm(r['SQL or ORA']),
+      norm(r['15 or 15U']),                 norm(r['Modules Tested']),
+      norm(r['Status']),                    norm(r['Time Tested']),
+      norm(r['Log Date'])
+    ].join('§');
+    const existingPrints = new Set(existing.map(fp));
+
+    const writeTx = db.transaction('records', 'readwrite');
+    const store   = writeTx.objectStore('records');
     importedRecords.forEach(r => {
-      const { id, ...rest } = r; // strip any existing id so autoIncrement assigns a new one
-      store.add(rest);
+      const { id, ...rest } = r;
+      if (!existingPrints.has(fp(rest))) {
+        existingPrints.add(fp(rest)); // guard against dupes within the import file itself
+        store.add(rest);
+      }
     });
     await new Promise((resolve, reject) => {
-      tx.oncomplete = resolve;
-      tx.onerror    = e => reject(e.target.error);
+      writeTx.oncomplete = resolve;
+      writeTx.onerror    = e => reject(e.target.error);
     });
     updateMasterLogCount();
   } catch(_) { showToast('Import failed — could not write to IndexedDB.'); }
@@ -1317,24 +1337,34 @@ async function importMasterLog(inputEl) {
 
     await mergeIntoMasterLog(imported);
 
+    // Normalise a value: coerce to string, trim whitespace, collapse to '' if falsy
+    const norm = v => String(v ?? '').trim();
+    // Fingerprint uses normalised key fields — robust against Excel round-trip differences
+    const fingerprint = r => [
+      norm(r['Task Number']).toUpperCase(),
+      norm(r['Task Description']),
+      norm(r['Environment(s)']),
+      norm(r['SQL or ORA']),
+      norm(r['15 or 15U']),
+      norm(r['Modules Tested']),
+      norm(r['Status']),
+      norm(r['Time Tested'])
+    ].join('§');
+
     // Only restore records to Today's Log if they ORIGINALLY had today's date —
     // never add auto-stamped records (daily logs) since we can't verify their actual date
     let addedCount = 0;
     if (hadExplicitDates) {
-      const todayRecords = imported.filter(r => r['Log Date'] === today);
+      const todayRecords = imported.filter(r => norm(r['Log Date']) === today);
       if (todayRecords.length) {
-        const fingerprint = r => [
-          r['Task Number'], r['Task Description'], r['Environment(s)'],
-          r['SQL or ORA'], r['15 or 15U'], r['Modules Tested'],
-          r['Status'], r['Time Tested']
-        ].join('|');
         const existingPrints = new Set(records.map(fingerprint));
 
         todayRecords.forEach(r => {
           const { 'Log Date': _, id, ...sessionRecord } = r;
-          if (!existingPrints.has(fingerprint(sessionRecord))) {
+          const fp = fingerprint(sessionRecord);
+          if (!existingPrints.has(fp)) {
             records.push(sessionRecord);
-            existingPrints.add(fingerprint(sessionRecord));
+            existingPrints.add(fp);
             addedCount++;
           }
         });
