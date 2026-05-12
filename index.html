@@ -1821,7 +1821,7 @@ function toggleVer(key, label) {
     document.getElementById('btn-'+key).classList.add('active-completed');
   } else {
     selectedVers.splice(idx, 1);
-    document.getElementById('btn-'+key).classList.remove('active-completed');
+    document.getElementById('btn-'+key).className = 'status-btn'; // full reset — button may have ver-env-* class when both DBs are active
     delete verEnvs[label];
   }
   renderVerEnvRow();
@@ -3069,21 +3069,31 @@ function doResume() {
   // -- Notes --
   if (r['Notes']) document.getElementById('notes').value = r['Notes'];
 
-  // -- Modules: parse comma-separated names back into checked state --
-  // moduleEnvs keys are checked module names; restore best-effort from stored string
+  // -- Modules: restore checked state from stored string --
+  // Possible formats:
+  //   plain:      "QAE, QAS, EM"
+  //   sql/ora:    "SQL: QAE, PAM | ORA: QAS, EM"
+  //   vers:       "15: QAE, QAS | 15U: PAM, EM"
+  //   combined:   "SQL: QAE | ORA: QAS | 15: X | 15U: Y"
   moduleEnvs = {};
   const modRaw = r['Modules Tested'] || '';
   if (modRaw && modRaw !== '—') {
-    // Format can be "SQL: A, B | ORA: C" or plain "A, B, C"
     const sqlPart = (modRaw.match(/SQL:\s*([^|]+)/i) || [])[1];
     const oraPart = (modRaw.match(/ORA:\s*([^|]+)/i) || [])[1];
     if (sqlPart || oraPart) {
+      // SQL/ORA attributed — restore DB assignment
       (sqlPart || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => moduleEnvs[m] = 'sql');
       (oraPart || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => {
         moduleEnvs[m] = moduleEnvs[m] === 'sql' ? 'both' : 'ora';
       });
     } else {
-      modRaw.split(',').map(s => s.trim()).filter(Boolean).forEach(m => { moduleEnvs[m] = 'both'; });
+      // 15/15U sections or plain — strip any "N:" / "NU:" prefixes then split by | and ,
+      modRaw
+        .replace(/\b\d+U?\s*:\s*/gi, '') // remove "15: ", "15U: " etc.
+        .split(/[|,]/)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .forEach(m => { moduleEnvs[m] = 'both'; });
     }
   }
 
