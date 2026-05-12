@@ -700,6 +700,7 @@
   .btn:hover  { opacity: 0.88; }
 
   .btn-save    { flex: 2; background: var(--blue-bg);   border-color: var(--blue-border);   color: var(--blue-text);   }
+  .btn-save.btn-edit-mode { background: var(--amber-bg); border-color: var(--amber-border); color: var(--amber-text); }
   .btn-midday  { flex: 2; background: var(--purple-bg); border-color: var(--purple-border); color: var(--purple-text); }
   .btn-export  { flex: 2; background: var(--green-bg);  border-color: var(--green-border);  color: var(--green-text);  }
   .btn-reset   { flex: 1; background: var(--surface2);  border-color: var(--border-med);    color: var(--text-muted);  }
@@ -895,6 +896,12 @@
         <button class="btn-nontask-cancel" id="nontaskCancelBtn" style="display:none;" onclick="deactivateNonTaskMode()">✕ Cancel</button>
       </div>
 
+      <!-- Edit mode banner -->
+      <div id="editModeBanner" style="display:none;background:var(--amber-bg);border:0.5px solid var(--amber-border);color:var(--amber-text);border-radius:8px;padding:8px 14px;font-size:13px;font-weight:500;margin-bottom:1rem;display:none;align-items:center;justify-content:space-between;gap:8px;">
+        <span>✏️ Editing existing entry — changes will update the logged task, not create a new one.</span>
+        <button onclick="deactivateEditMode()" title="Cancel edit" style="background:none;border:none;cursor:pointer;color:var(--red-text);font-size:16px;font-weight:700;line-height:1;padding:0 2px;font-family:inherit;">✕</button>
+      </div>
+
       <!-- Lockable task fields — locked in non-task mode -->
       <div id="taskFormFields">
         <div class="field">
@@ -980,7 +987,7 @@
       <hr class="divider">
 
       <div class="btn-row">
-        <button class="btn btn-save"   onclick="submitEntry()">Save &amp; Add Another</button>
+        <button class="btn btn-save" id="btn-save-entry" onclick="submitEntry()">Save &amp; Add Another</button>
         <button class="btn btn-midday" onclick="openPreview('midday')">Mid-Day Snapshot</button>
         <button class="btn btn-export" onclick="openPreview('wrapup')">Wrap Up the Day</button>
         <button class="btn btn-reset"  onclick="clearForm()">Clear Form</button>
@@ -1033,6 +1040,30 @@
       <div class="preview-table-wrap" style="margin-top:8px;">
         <table class="preview-table" id="previewPETable"></table>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit existing entry — suggest modal -->
+<div class="overlay" id="editSuggestOverlay">
+  <div class="modal">
+    <h2>Edit logged task?</h2>
+    <p id="editSuggestMsg"></p>
+    <div class="modal-btns">
+      <button class="modal-yes" style="background:var(--amber-bg);border-color:var(--amber-border);color:var(--amber-text);" onclick="acceptEditSuggestion()">Yes, edit it</button>
+      <button class="modal-no" onclick="declineEditSuggestion()">No, add new</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit existing entry — confirm changes modal -->
+<div class="overlay" id="editConfirmOverlay" style="z-index:300;">
+  <div class="modal" style="max-width:520px;">
+    <h2>Confirm task changes</h2>
+    <div id="editConfirmBody" style="font-size:13px;line-height:1.6;margin-bottom:1.25rem;"></div>
+    <div class="modal-btns">
+      <button class="modal-yes" style="background:var(--amber-bg);border-color:var(--amber-border);color:var(--amber-text);" onclick="confirmSaveEdit()">Save changes</button>
+      <button class="modal-no" onclick="cancelSaveEdit()">Go back</button>
     </div>
   </div>
 </div>
@@ -1915,18 +1946,190 @@ function getDynModules() {
 }
 
 
+// ── Edit existing entry ──────────────────────────────────────────────
+let editingRecordIndex  = null;
+let _editOriginalRecord = null;
+let _editCheckTimer     = null;
+let _editPendingValues  = null; // values collected before showing confirm popup
+
+function checkForExistingEntry() {
+  if (editingRecordIndex !== null) return; // already editing
+  const taskVal = document.getElementById('taskNum').value.trim();
+  if (!/^[A-Za-z]{2,4}-\d{4}-\d{3}$/.test(taskVal)) return;
+
+  const idx = records.findIndex(r =>
+    (r['Task Number'] || '').trim().toUpperCase() === taskVal.toUpperCase()
+  );
+  if (idx === -1) return;
+
+  // Cancel pending resume popup — edit takes priority
+  clearTimeout(_resumeCheckTimer);
+
+  const r = records[idx];
+  document.getElementById('editSuggestMsg').innerHTML =
+    `<strong>${r['Task Number']}</strong> is already in today's log. ` +
+    `Would you like to edit it instead of creating a new entry?`;
+  document.getElementById('editSuggestOverlay')._pendingIdx = idx;
+  document.getElementById('editSuggestOverlay').classList.add('active');
+}
+
+function acceptEditSuggestion() {
+  const idx = document.getElementById('editSuggestOverlay')._pendingIdx;
+  document.getElementById('editSuggestOverlay').classList.remove('active');
+  if (idx == null) return;
+  activateEditMode(idx);
+}
+
+function declineEditSuggestion() {
+  document.getElementById('editSuggestOverlay').classList.remove('active');
+}
+
+function activateEditMode(idx) {
+  editingRecordIndex  = idx;
+  _editOriginalRecord = { ...records[idx] };
+  const r = records[idx];
+
+  // Pre-fill description
+  document.getElementById('taskDesc').value = r['Task Description'] !== '—' ? (r['Task Description'] || '') : '';
+
+  // Environment
+  const env = (r['Environment(s)'] || '').split('/')[0].trim();
+  selectedEnvs = [];
+  ['vetting','alpha','beta','release'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
+  const envKeyMap = { 'Vetting':'vetting','Alpha':'alpha','Beta':'beta','Release':'release' };
+  if (envKeyMap[env]) { selectedEnvs = [env]; document.getElementById('btn-'+envKeyMap[env]).classList.add('active-completed'); }
+
+  // SQL/ORA
+  selectedDbs = [];
+  document.getElementById('btn-sql').className = 'status-btn';
+  document.getElementById('btn-ora').className = 'status-btn';
+  const dbStr = r['SQL or ORA'] || '';
+  if (dbStr !== '—') {
+    if (dbStr.includes('SQL')) { selectedDbs.push('SQL'); document.getElementById('btn-sql').className = 'status-btn active-completed'; }
+    if (dbStr.includes('ORA')) { selectedDbs.push('ORA'); document.getElementById('btn-ora').className = 'status-btn ver-env-ora'; }
+  }
+
+  // 15/15U
+  selectedVers = []; verEnvs = {};
+  document.getElementById('btn-15').className  = 'status-btn';
+  document.getElementById('btn-15u').className = 'status-btn';
+  const versRaw = r['15 or 15U'] || '';
+  if (versRaw !== '—') {
+    if (versRaw.includes('15U')) { selectedVers.push('15U'); document.getElementById('btn-15u').className = 'status-btn active-completed'; }
+    if (/\b15\b/.test(versRaw))  { selectedVers.push('15');  document.getElementById('btn-15').className  = 'status-btn active-completed'; }
+    const sqlVers = (versRaw.match(/SQL:\s*([^|]+)/i) || [])[1];
+    const oraVers = (versRaw.match(/ORA:\s*([^|]+)/i) || [])[1];
+    if (sqlVers || oraVers) {
+      // Split on / , or whitespace then exact-match — prevents '15' matching inside '15U'
+      // Use || so single-DB assignments like "ORA: 15U/15" (no SQL: part) are also parsed
+      const sqlList = (sqlVers || '').split(/[/,\s]+/).map(s => s.trim()).filter(Boolean);
+      const oraList = (oraVers || '').split(/[/,\s]+/).map(s => s.trim()).filter(Boolean);
+      ['15','15U'].forEach(v => {
+        if (sqlList.includes(v)) verEnvs[v] = 'sql';
+        if (oraList.includes(v)) verEnvs[v] = 'ora';
+      });
+    }
+  }
+
+  // Status
+  if (r['Status']) setStatus(r['Status']);
+
+  // Time tested + remaining time + notes
+  document.getElementById('timeInput').value = (r['Time Tested'] && r['Time Tested'] !== '—') ? r['Time Tested'] : '';
+  document.getElementById('notes').value     = r['Notes'] !== '—' ? (r['Notes'] || '') : '';
+  const remRaw = (r['Remaining Time (est)'] || '').trim();
+  if (remRaw && remRaw !== '—') {
+    const qualRevMap = { '≥':'gte', '≤':'lte', '≈':'about' };
+    const sym = remRaw[0];
+    if (qualRevMap[sym]) {
+      document.getElementById('timeRemainingQual').value = qualRevMap[sym];
+      document.getElementById('timeRemaining').value     = remRaw.slice(1).trim();
+    } else {
+      document.getElementById('timeRemainingQual').value = '';
+      document.getElementById('timeRemaining').value     = remRaw;
+    }
+  } else {
+    document.getElementById('timeRemainingQual').value = '';
+    document.getElementById('timeRemaining').value     = '';
+  }
+
+  // Modules
+  moduleEnvs = {};
+  const modRaw = r['Modules Tested'] || '';
+  if (modRaw && modRaw !== '—') {
+    const sqlPart = (modRaw.match(/SQL:\s*([^|]+)/i) || [])[1];
+    const oraPart = (modRaw.match(/ORA:\s*([^|]+)/i) || [])[1];
+    if (sqlPart || oraPart) {
+      (sqlPart || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => moduleEnvs[m] = 'sql');
+      (oraPart || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => {
+        moduleEnvs[m] = moduleEnvs[m] === 'sql' ? 'both' : 'ora';
+      });
+    } else {
+      modRaw.replace(/\b\d+U?\s*:\s*/gi, '').split(/[|,]/).map(s => s.trim()).filter(Boolean)
+        .forEach(m => { moduleEnvs[m] = 'both'; });
+    }
+  }
+
+  // Switch save button + show banner
+  const saveBtn = document.getElementById('btn-save-entry');
+  saveBtn.textContent = 'Save Task Changes';
+  saveBtn.classList.add('btn-edit-mode');
+  const banner = document.getElementById('editModeBanner');
+  banner.style.display = 'flex';
+
+  renderVerEnvRow();
+  updateModules();
+  clearTimeout(_resumeCheckTimer);
+  clearTimeout(_editCheckTimer);
+  saveFormState();
+}
+
+function deactivateEditMode() {
+  editingRecordIndex  = null;
+  _editOriginalRecord = null;
+  _editPendingValues  = null;
+  const saveBtn = document.getElementById('btn-save-entry');
+  saveBtn.textContent = 'Save & Add Another';
+  saveBtn.classList.remove('btn-edit-mode');
+  document.getElementById('editModeBanner').style.display = 'none';
+  clearForm();
+}
+
+function confirmSaveEdit() {
+  if (_editPendingValues === null || editingRecordIndex === null) return;
+  records[editingRecordIndex] = _editPendingValues;
+  saveToStorage();
+  document.getElementById('editConfirmOverlay').classList.remove('active');
+  deactivateEditMode();
+  clearForm();
+  updateCount();
+  updateSidebar();
+  updateMasterLogCount();
+  showToast('Task updated in today\'s log.');
+}
+
+function cancelSaveEdit() {
+  _editPendingValues = null;
+  document.getElementById('editConfirmOverlay').classList.remove('active');
+}
+
 let _resumeCheckTimer = null;
 function updateModules() {
   const taskVal = document.getElementById('taskNum').value;
   const prefix  = getPrefix(taskVal);
   const area    = document.getElementById('moduleArea');
 
-  // Always check for a paused entry on any valid-format task number,
-  // regardless of whether the prefix maps to a known module group
+  // On valid-format task number: check today's log for an edit match (takes priority),
+  // then check master log for paused/sent-back resume
   if (/^[A-Za-z]{2,4}-\d{4}-\d{3}$/.test(taskVal.trim())) {
+    clearTimeout(_editCheckTimer);
     clearTimeout(_resumeCheckTimer);
-    _resumeCheckTimer = setTimeout(checkForPausedEntry, 400);
+    _editCheckTimer   = setTimeout(checkForExistingEntry, 250);
+    _resumeCheckTimer = setTimeout(checkForPausedEntry,   500);
   }
+
+  // If the field was cleared while in edit mode, cancel the edit
+  if (!taskVal.trim() && editingRecordIndex !== null) deactivateEditMode();
 
   if (!prefix) {
     area.innerHTML = '<span class="no-modules">Enter a task number to see available modules</span>';
@@ -2154,6 +2357,141 @@ function getVersValue() {
 }
 
 function submitEntry() {
+  // ── Edit mode: intercept, build diff, show confirm ────────────────
+  if (editingRecordIndex !== null) {
+    const task = document.getElementById('taskNum').value.trim();
+    if (!task) { showToast('Please enter a task number.'); return; }
+    if (!selectedStatus) { showToast('Please select a status.'); return; }
+
+    const newRecord = {
+      'Task Number':          task,
+      'Task Description':     document.getElementById('taskDesc').value.trim(),
+      'Environment(s)':       selectedEnvs.length ? selectedEnvs.join('/') : '—',
+      'SQL or ORA':           selectedDbs.length  ? selectedDbs.join('/')  : '—',
+      '15 or 15U':            getVersValue(),
+      'Modules Tested':       getCheckedModules() || '—',
+      'Time Tested':          document.getElementById('timeInput').value.trim() || '—',
+      'Remaining Time (est)': (() => {
+        const val = document.getElementById('timeRemaining').value.trim();
+        if (!val) return '—';
+        const qualMap = { gte:'≥', lte:'≤', about:'≈' };
+        const sym = qualMap[document.getElementById('timeRemainingQual').value] || '';
+        return sym ? `${sym} ${val}` : val;
+      })(),
+      'Status': selectedStatus,
+      'Notes':  document.getElementById('notes').value.trim()
+    };
+    _editPendingValues = newRecord;
+
+    const orig = _editOriginalRecord;
+    const taskNumChanged = orig['Task Number'] !== newRecord['Task Number'];
+
+    // ── Helpers for structured Modules Tested display ─────────────────
+    // Parse "SQL: A, B | ORA: C" + "SQL: 15 | ORA: 15U" into structured data
+    const parseModData = (modStr, verStr) => {
+      const verMap = {}, modMap = {};
+      if (verStr && verStr !== '—') {
+        const sv = (verStr.match(/SQL:\s*([^|]+)/i) || [])[1];
+        const ov = (verStr.match(/ORA:\s*([^|]+)/i) || [])[1];
+        (sv || '').split(/[/,\s]+/).filter(Boolean).forEach(v => { verMap[v] = 'sql'; });
+        (ov || '').split(/[/,\s]+/).filter(Boolean).forEach(v => { verMap[v] = 'ora'; });
+      }
+      if (modStr && modStr !== '—') {
+        const sp = (modStr.match(/SQL:\s*([^|]+)/i) || [])[1];
+        const op = (modStr.match(/ORA:\s*([^|]+)/i) || [])[1];
+        if (sp || op) {
+          (sp || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => { modMap[m] = 'sql'; });
+          (op || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => {
+            modMap[m] = modMap[m] === 'sql' ? 'both' : 'ora';
+          });
+        } else {
+          modStr.replace(/\b\d+U?\s*:\s*/gi, '').split(/[|,]/).map(s => s.trim()).filter(Boolean)
+            .forEach(m => { modMap[m] = 'both'; });
+        }
+      }
+      return { verMap, modMap };
+    };
+
+    // Render module data as structured or flat HTML
+    const renderModHTML = (verMap, modMap, useVerBreakdown) => {
+      if (!Object.keys(modMap).length) return '<em style="color:var(--text-hint);">—</em>';
+      if (useVerBreakdown) {
+        const lines = ['15','15U'].map(v => {
+          const db = verMap[v];
+          if (!db || db === 'both') return null;
+          const mods = Object.keys(modMap).filter(m => modMap[m] === db || modMap[m] === 'both');
+          return mods.length
+            ? `<div style="margin:2px 0 2px 8px;font-size:11px;"><strong>${v}</strong>
+                <div style="margin-left:10px;">${db.toUpperCase()}: ${mods.join(', ')}</div></div>`
+            : null;
+        }).filter(Boolean).join('');
+        return lines || Object.keys(modMap).join(', ');
+      }
+      const sqlM = Object.keys(modMap).filter(m => modMap[m] === 'sql' || modMap[m] === 'both');
+      const oraM = Object.keys(modMap).filter(m => modMap[m] === 'ora' || modMap[m] === 'both');
+      if (sqlM.length && oraM.length) return `<span style="font-size:11px;">SQL: ${sqlM.join(', ')} | ORA: ${oraM.join(', ')}</span>`;
+      return `<span style="font-size:11px;">${Object.keys(modMap).join(', ')}</span>`;
+    };
+
+    // Determine if version breakdown applies (either old or new has versions on different DBs)
+    const oldParsed = parseModData(orig['Modules Tested'], orig['15 or 15U']);
+    const newVerMap = {}; // build from live state
+    if (verEnvs['15'])  newVerMap['15']  = verEnvs['15'];
+    if (verEnvs['15U']) newVerMap['15U'] = verEnvs['15U'];
+    const oldHasVerSplit = Object.keys(oldParsed.verMap).length >= 2 &&
+      oldParsed.verMap['15'] && oldParsed.verMap['15U'] &&
+      oldParsed.verMap['15'] !== oldParsed.verMap['15U'];
+    const newHasVerSplit = newVerMap['15'] && newVerMap['15U'] &&
+      newVerMap['15'] !== newVerMap['15U'] &&
+      (newVerMap['15'] === 'sql' || newVerMap['15'] === 'ora');
+    const useVerBreakdown = oldHasVerSplit || newHasVerSplit;
+
+    // Build new modMap from live state
+    const newModMap = { ...moduleEnvs };
+
+    // ── Build diff lines ──────────────────────────────────────────────
+    const fieldLabels = [
+      'Task Number','Task Description','Environment(s)','SQL or ORA',
+      '15 or 15U','Modules Tested','Status','Time Tested','Remaining Time (est)','Notes'
+    ];
+    const diffLines = fieldLabels
+      .filter(f => String(orig[f] || '—') !== String(newRecord[f] || '—'))
+      .map(f => {
+        const flag = f === 'Task Number' ? ' ⚠️' : '';
+
+        if (f === 'Modules Tested') {
+          const oldHTML = renderModHTML(oldParsed.verMap, oldParsed.modMap, useVerBreakdown);
+          const newHTML = renderModHTML(newVerMap, newModMap, useVerBreakdown);
+          return `<div style="margin-bottom:8px;">
+            <span style="color:var(--text-muted);font-size:12px;">Modules Tested</span>
+            <div style="margin-top:4px;padding-left:8px;border-left:2px solid var(--border-med);">
+              <div style="margin-bottom:4px;text-decoration:line-through;color:var(--text-hint);">${oldHTML}</div>
+              <div><strong>${newHTML}</strong></div>
+            </div>
+          </div>`;
+        }
+
+        return `<div style="margin-bottom:4px;">
+          <span style="color:var(--text-muted);font-size:12px;">${f}${flag}</span><br>
+          <span style="text-decoration:line-through;color:var(--text-hint);font-size:12px;">${orig[f] || '—'}</span>
+          &nbsp;→&nbsp;
+          <strong style="font-size:12px;">${newRecord[f] || '—'}</strong>
+        </div>`;
+      });
+
+    const bodyEl = document.getElementById('editConfirmBody');
+    if (!diffLines.length) {
+      bodyEl.innerHTML = '<span style="color:var(--text-muted);">No changes detected.</span>';
+    } else {
+      const taskNumWarning = taskNumChanged
+        ? `<div style="background:var(--amber-bg);border:0.5px solid var(--amber-border);color:var(--amber-text);border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;">⚠️ The task number is being changed. Make sure this is intentional.</div>`
+        : '';
+      bodyEl.innerHTML = taskNumWarning + diffLines.join('');
+    }
+    document.getElementById('editConfirmOverlay').classList.add('active');
+    return;
+  }
+
   if (nonTaskMode) {
     // Non-task entry — skip all task-related validations
     const typeVal   = document.getElementById('nontaskType').value;
@@ -2221,6 +2559,9 @@ function submitEntry() {
 }
 
 function clearForm() {
+  // Reset edit mode if active
+  if (editingRecordIndex !== null) deactivateEditMode();
+
   // Reset non-task mode if active
   if (nonTaskMode) {
     nonTaskMode = false;
@@ -3057,10 +3398,12 @@ function doResume() {
     // Attempt to restore verEnvs from "SQL: 15 | ORA: 15U" style
     const sqlVers = (versRaw.match(/SQL:\s*([^|]+)/i) || [])[1];
     const oraVers = (versRaw.match(/ORA:\s*([^|]+)/i) || [])[1];
-    if (sqlVers && oraVers) {
+    if (sqlVers || oraVers) {
+      const sqlList = (sqlVers || '').split(/[/,\s]+/).map(s => s.trim()).filter(Boolean);
+      const oraList = (oraVers || '').split(/[/,\s]+/).map(s => s.trim()).filter(Boolean);
       ['15','15U'].forEach(v => {
-        if (sqlVers.includes(v)) verEnvs[v] = 'sql';
-        if (oraVers.includes(v)) verEnvs[v] = 'ora';
+        if (sqlList.includes(v)) verEnvs[v] = 'sql';
+        if (oraList.includes(v)) verEnvs[v] = 'ora';
       });
     }
   }
