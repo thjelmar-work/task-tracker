@@ -906,13 +906,13 @@
       <div id="taskFormFields">
         <div class="field">
           <label class="field-label" for="taskNum">Task number</label>
-          <input type="text" id="taskNum" placeholder="e.g. DYN-1234-567" oninput="updateModules()">
+          <input type="text" id="taskNum" placeholder="e.g. DYN-1234-567" oninput="updateModules()" autocomplete="off">
           <span style="font-size:11px;color:var(--text-hint);margin-top:3px;display:block;">Format: ABCD-0000-000</span>
         </div>
 
         <div class="field">
           <label class="field-label" for="taskDesc">Task description</label>
-          <textarea id="taskDesc" placeholder="Briefly describe the task..."></textarea>
+          <textarea id="taskDesc" placeholder="Briefly describe the task..." autocomplete="off"></textarea>
         </div>
 
         <div class="field">
@@ -1473,6 +1473,7 @@ async function updateMasterLogCount() {
 function saveFormState() {
   try {
     const state = {
+      savedAt:           new Date().toDateString(), // used to discard stale state on next day
       taskNum:           document.getElementById('taskNum').value,
       taskDesc:          document.getElementById('taskDesc').value,
       timeInput:         document.getElementById('timeInput').value,
@@ -1500,6 +1501,12 @@ function restoreFormState() {
     const raw = localStorage.getItem(FORM_KEY);
     if (!raw) return;
     const s = JSON.parse(raw);
+
+    // Discard state saved on a previous day — stale task data shouldn't carry over
+    if (s.savedAt && s.savedAt !== new Date().toDateString()) {
+      clearFormStorage();
+      return;
+    }
 
     // Text fields
     if (s.taskNum)           document.getElementById('taskNum').value           = s.taskNum;
