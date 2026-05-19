@@ -1111,10 +1111,7 @@
     <!-- Auto-fill banner -->
     <div class="pe-autofill-banner" id="peAutofillBanner" style="display:none;">
       <span id="peAutofillMsg"></span>
-      <div style="display:flex;gap:6px;margin-top:6px;">
-        <button class="modal-yes" style="flex:unset;padding:6px 16px;font-size:13px;" onclick="peAcceptAutofill()">Yes, use it</button>
-        <button class="modal-no"  style="flex:unset;padding:6px 16px;font-size:13px;" onclick="peDismissAutofill()">No thanks</button>
-      </div>
+      <div id="peAutofillActions" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;"></div>
     </div>
 
     <div class="pe-fields">
@@ -3166,15 +3163,24 @@ async function openPEModal() {
     ? [currentTask, ...sessionTasks.filter(t => t !== currentTask)]
     : sessionTasks;
 
-  const banner  = document.getElementById('peAutofillBanner');
-  const msgEl   = document.getElementById('peAutofillMsg');
-  if (candidateTasks.length) {
-    const display = candidateTasks.length === 1
-      ? `Found task <strong>${candidateTasks[0]}</strong> in your current log. Auto-fill the "Task Found In" field?`
-      : `Found tasks in your current log (<strong>${candidateTasks.join(', ')}</strong>). Auto-fill with the most recent?`;
-    msgEl.innerHTML = display;
+  const banner     = document.getElementById('peAutofillBanner');
+  const msgEl      = document.getElementById('peAutofillMsg');
+  const actionsEl  = document.getElementById('peAutofillActions');
+  const noBtn      = `<button class="modal-no" style="flex:unset;padding:6px 14px;font-size:13px;" onclick="peDismissAutofill()">No thanks</button>`;
+
+  if (candidateTasks.length === 1) {
+    msgEl.innerHTML  = `Found task <strong>${candidateTasks[0]}</strong> in your current log. Auto-fill the "Task Found In" field?`;
+    actionsEl.innerHTML = `
+      <button class="modal-yes" style="flex:unset;padding:6px 16px;font-size:13px;background:var(--green-bg);border-color:var(--green-border);color:var(--green-text);" onclick="peSelectTask('${candidateTasks[0]}')">Yes, use it</button>
+      ${noBtn}`;
     banner.style.display = '';
-    banner._candidates = candidateTasks;
+  } else if (candidateTasks.length > 1) {
+    msgEl.innerHTML  = `Found ${candidateTasks.length} tasks in your log. Select which one this P&amp;E relates to:`;
+    const taskBtns   = candidateTasks.map(t =>
+      `<button class="status-btn" style="flex:unset;padding:5px 10px;font-size:12px;" onclick="peSelectTask('${t}')">${t}</button>`
+    ).join('');
+    actionsEl.innerHTML = taskBtns + noBtn;
+    banner.style.display = '';
   } else {
     banner.style.display = 'none';
   }
@@ -3198,14 +3204,10 @@ function resetPEForm() {
   document.getElementById('peTaskFound').readOnly = false;
 }
 
-function peAcceptAutofill() {
-  const banner     = document.getElementById('peAutofillBanner');
-  const candidates = banner._candidates || [];
-  if (candidates.length) {
-    document.getElementById('peTaskFound').value    = candidates[0];
-    document.getElementById('peTaskFound').readOnly = true;
-  }
-  banner.style.display = 'none';
+function peSelectTask(taskNum) {
+  document.getElementById('peTaskFound').value    = taskNum;
+  document.getElementById('peTaskFound').readOnly = false; // always editable after selection
+  document.getElementById('peAutofillBanner').style.display = 'none';
 }
 function peDismissAutofill() {
   document.getElementById('peAutofillBanner').style.display = 'none';
