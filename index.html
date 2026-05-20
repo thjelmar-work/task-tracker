@@ -2609,13 +2609,15 @@ function clearForm() {
   clearFormStorage();
 }
 
-// Shared reset logic — clears records, form, and sidebar
-function resetDay() {
+// Shared reset logic — clears records, form, sidebar, and today's P&E entries
+async function resetDay() {
   records = [];
   clearStorage();
   clearForm();
+  await clearPETodayRecords();
   updateCount();
   updateSidebar();
+  updateMasterLogCount();
 }
 
 // ── Excel export ─────────────────────────────────────────────────────
@@ -2623,6 +2625,22 @@ async function loadPERecordsToday() {
   const today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
   const all   = await loadPERecords();
   return all.filter(r => r['Log Date'] === today);
+}
+
+async function clearPETodayRecords() {
+  const today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+  try {
+    const db    = await openPEDB();
+    const tx    = db.transaction('records', 'readwrite');
+    const store = tx.objectStore('records');
+    const all   = await new Promise((res, rej) => {
+      const req = store.getAll(); req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error);
+    });
+    all.filter(r => r['Log Date'] === today).forEach(r => store.delete(r.id));
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = e => rej(e.target.error); });
+  } catch(_) {}
+  peTodayRecords = [];
+  updatePELogCount();
 }
 
 function addPESheetToWorkbook(wb, peData) {
@@ -2902,7 +2920,7 @@ async function clearDay() {
   document.getElementById('previewOverlay').classList.remove('active');
   _previewMode = '';
   await appendToMasterLog(records);
-  resetDay();
+  await resetDay();
   showToast('Day cleared and saved to master log.');
 }
 
@@ -3044,7 +3062,7 @@ async function exportExcel() {
   addPESheetToWorkbook(wb, todayPEs);
   const date = new Date().toISOString().slice(0, 10);
   await downloadWorkbook(wb, `task-log-${date}.xlsx`);
-  resetDay();
+  await resetDay();
   showToast('Excel downloaded! Log cleared for a new day.');
 }
 
@@ -3457,8 +3475,8 @@ function doResume() {
   showToast('Form pre-filled from paused entry. Log it when ready!');
 }
 
-function doReset() {
-  resetDay();
+async function doReset() {
+  await resetDay();
   closeModal();
   showToast('All data cleared.');
 }
