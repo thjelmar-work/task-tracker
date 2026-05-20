@@ -2301,12 +2301,17 @@ function isValidTimeInput(str) {
   return !!(hmMatch && (hmMatch[1] || hmMatch[2]));
 }
 
-// Auto-convert a plain decimal entry (e.g. "0.50") to hrs/min format on blur
+// Auto-convert a decimal entry to hrs/min format on blur.
+// Handles pure decimals ("0.50"), decimals with unit suffixes ("1.5h", "0.50hrs"),
+// and decimals with stray characters ("1.5x") by extracting the leading number.
+// Skips anything already in h/m format (contains "min").
 function autoConvertTime(inputEl) {
   const val = (inputEl.value || '').trim();
   if (!val) return;
-  if (/^\d+(\.\d+)?$/.test(val)) {
-    const h = parseFloat(val);
+  if (/min/i.test(val)) return; // already in h/m format — leave alone
+  const match = val.match(/^(\d+(?:\.\d+)?)/);
+  if (match) {
+    const h = parseFloat(match[1]);
     if (!isNaN(h) && h >= 0) inputEl.value = formatHM(h);
   }
 }
