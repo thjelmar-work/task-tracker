@@ -1002,7 +1002,8 @@
           </span>
           <span id="masterLogLastExport" style="font-size:11px;color:var(--text-hint);"></span>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button class="btn btn-masterlog" onclick="downloadMasterLog()" style="flex:unset;padding:7px 14px;">Download Master Log</button>
+            <button class="btn btn-masterlog" onclick="openMasterLogPreview()" style="flex:unset;padding:7px 14px;">View Master Log</button>
+            <button class="btn btn-masterlog" onclick="downloadMasterLog()" style="flex:unset;padding:7px 14px;opacity:0.8;">Download Master Log</button>
             <button class="btn btn-masterlog" onclick="document.getElementById('masterLogImport').click()" style="flex:unset;padding:7px 14px;opacity:0.8;">Import Master Log</button>
             <input type="file" id="masterLogImport" accept=".xlsx" style="display:none" onchange="importMasterLog(this)">
           </div>
@@ -2833,8 +2834,159 @@ async function downloadWorkbook(wb, filename) {
 }
 
 // ── Preview modal ────────────────────────────────────────────────────
-let _previewMode    = ''; // 'midday' | 'wrapup'
+let _previewMode    = ''; // 'midday' | 'wrapup' | 'masterlog'
 let _previewPECache = []; // today's P&E records cached at preview open time
+
+let _masterLogCache = []; // records stored for search/filter
+
+async function openMasterLogPreview() {
+  const log    = await loadMasterLog();
+  const allPEs = await loadPERecords();
+  if (!log.length && !allPEs.length) { showToast('No master log records yet.'); return; }
+
+  _previewMode      = 'masterlog';
+  _previewPECache   = allPEs;
+  _masterLogCache   = log;
+
+  renderMasterLogTable(log);
+
+  const totalHrs = log.reduce((sum, r) => sum + parseTimeToHours(r['Time Tested']), 0);
+  document.getElementById('previewTotal').innerHTML =
+    totalHrs > 0 ? `Total time tested (all sessions): <strong>${formatForSidebar(totalHrs)}</strong>` : '';
+
+  // P&E section
+  const peSection = document.getElementById('previewPESection');
+  const peTable   = document.getElementById('previewPETable');
+  if (allPEs.length) {
+    const peCols = ['Log Date','P&E Number','Description','Details','Task Found In','Task Created','Created Task Number'];
+    peTable.innerHTML =
+      `<thead><tr>${peCols.map(c => `<th>${c}</th>`).join('')}</tr></thead>` +
+      `<tbody>${allPEs.map(r => `<tr>${peCols.map(c => `<td>${r[c] ?? '—'}</td>`).join('')}</tr>`).join('')}</tbody>`;
+    peSection.style.display = '';
+  } else {
+    peSection.style.display = 'none';
+  }
+
+  document.getElementById('previewTitle').textContent = 'Master Log';
+  document.getElementById('previewSubtitle').innerHTML =
+    `<span>${log.length} task record${log.length !== 1 ? 's' : ''}${allPEs.length ? ` · ${allPEs.length} P&amp;E record${allPEs.length !== 1 ? 's' : ''}` : ''}</span>
+     <input id="masterLogSearch" type="text" placeholder="Search by task number or description…"
+       oninput="filterMasterLog(this.value)"
+       style="margin-top:6px;display:block;width:100%;padding:6px 10px;background:var(--surface2);color:var(--text);border:0.5px solid var(--border-med);border-radius:8px;font-family:inherit;font-size:12px;box-sizing:border-box;">`;
+  document.getElementById('previewDownloadBtn').style.display = 'none';
+  document.getElementById('previewOverlay').classList.add('active');
+  setTimeout(() => document.getElementById('masterLogSearch')?.focus(), 50);
+}
+
+function renderMasterLogTable(data) {
+  const cols = ['Log Date','Task Number','Task Description','Environment(s)','SQL or ORA','15 or 15U',
+                 'Modules Tested','Status','Time Tested','Remaining Time (est)','Notes'];
+  const statusClassMap = { 'Completed':'preview-status-completed', 'Sent Back':'preview-status-sentback',
+                            'Paused':'preview-status-paused', 'Non-Task':'preview-status-nontask' };
+
+  const thead = `<thead><tr><th style="white-space:nowrap;"></th>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead>`;
+  const tbody = `<tbody>${data.map((r, i) => {
+    const globalIdx = _masterLogCache.indexOf(r);
+    const cells = cols.map(c => {
+      const val = r[c] ?? '—';
+      const cls = c === 'Status' ? (statusClassMap[val] || '') : '';
+      return `<td${cls ? ` class="${cls}"` : ''}>${val || '—'}</td>`;
+    }).join('');
+    const loadBtn = r['Status'] !== 'Non-Task'
+      ? `<td><button onclick="loadMasterRecordToForm(${globalIdx})"
+           style="font-size:11px;padding:2px 7px;background:var(--blue-bg);border:0.5px solid var(--blue-border);color:var(--blue-text);border-radius:5px;cursor:pointer;white-space:nowrap;font-family:inherit;">
+           Load</button></td>`
+      : `<td></td>`;
+    return `<tr>${loadBtn}${cells}</tr>`;
+  }).join('')}</tbody>`;
+
+  document.getElementById('previewTable').innerHTML = thead + tbody;
+}
+
+function filterMasterLog(query) {
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? _masterLogCache.filter(r =>
+        (r['Task Number']      || '').toLowerCase().includes(q) ||
+        (r['Task Description'] || '').toLowerCase().includes(q))
+    : _masterLogCache;
+  renderMasterLogTable(filtered);
+}
+
+function loadMasterRecordToForm(idx) {
+  const r = _masterLogCache[idx];
+  if (!r) return;
+
+  // Close the preview
+  document.getElementById('previewOverlay').classList.remove('active');
+  _previewMode    = '';
+  _previewPECache = [];
+
+  // Task identifiers
+  document.getElementById('taskNum').value  = r['Task Number']      || '';
+  document.getElementById('taskDesc').value = r['Task Description'] !== '—' ? (r['Task Description'] || '') : '';
+
+  // Environment
+  const env = (r['Environment(s)'] || '').split('/')[0].trim();
+  selectedEnvs = [];
+  ['vetting','alpha','beta','release'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
+  const envKeyMap = { 'Vetting':'vetting','Alpha':'alpha','Beta':'beta','Release':'release' };
+  if (envKeyMap[env]) { selectedEnvs = [env]; document.getElementById('btn-'+envKeyMap[env]).classList.add('active-completed'); }
+
+  // SQL/ORA
+  selectedDbs = [];
+  document.getElementById('btn-sql').className = 'status-btn';
+  document.getElementById('btn-ora').className = 'status-btn';
+  const dbStr = r['SQL or ORA'] || '';
+  if (dbStr !== '—') {
+    if (dbStr.includes('SQL')) { selectedDbs.push('SQL'); document.getElementById('btn-sql').className = 'status-btn active-completed'; }
+    if (dbStr.includes('ORA')) { selectedDbs.push('ORA'); document.getElementById('btn-ora').className = 'status-btn ver-env-ora'; }
+  }
+
+  // 15/15U
+  selectedVers = []; verEnvs = {};
+  document.getElementById('btn-15').className  = 'status-btn';
+  document.getElementById('btn-15u').className = 'status-btn';
+  const versRaw = r['15 or 15U'] || '';
+  if (versRaw !== '—') {
+    if (versRaw.includes('15U')) { selectedVers.push('15U'); document.getElementById('btn-15u').className = 'status-btn active-completed'; }
+    if (/\b15\b/.test(versRaw))  { selectedVers.push('15');  document.getElementById('btn-15').className  = 'status-btn active-completed'; }
+    const sv = (versRaw.match(/SQL:\s*([^|]+)/i) || [])[1];
+    const ov = (versRaw.match(/ORA:\s*([^|]+)/i) || [])[1];
+    if (sv || ov) {
+      const sl = (sv || '').split(/[/,\s]+/).filter(Boolean);
+      const ol = (ov || '').split(/[/,\s]+/).filter(Boolean);
+      ['15','15U'].forEach(v => { if (sl.includes(v)) verEnvs[v]='sql'; if (ol.includes(v)) verEnvs[v]='ora'; });
+    }
+  }
+
+  // Status
+  if (r['Status'] && r['Status'] !== '—') setStatus(r['Status']);
+
+  // Notes (skip time fields — fresh session)
+  document.getElementById('notes').value = r['Notes'] !== '—' ? (r['Notes'] || '') : '';
+
+  // Modules
+  moduleEnvs = {};
+  const modRaw = r['Modules Tested'] || '';
+  if (modRaw && modRaw !== '—') {
+    const sp = (modRaw.match(/SQL:\s*([^|]+)/i) || [])[1];
+    const op = (modRaw.match(/ORA:\s*([^|]+)/i) || [])[1];
+    if (sp || op) {
+      (sp || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => moduleEnvs[m] = 'sql');
+      (op || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => { moduleEnvs[m] = moduleEnvs[m] === 'sql' ? 'both' : 'ora'; });
+    } else {
+      modRaw.replace(/\b\d+U?\s*:\s*/gi, '').split(/[|,]/).map(s => s.trim()).filter(Boolean)
+        .forEach(m => { moduleEnvs[m] = 'both'; });
+    }
+  }
+
+  renderVerEnvRow();
+  updateModules();
+  clearTimeout(_resumeCheckTimer);
+  saveFormState();
+  showToast(`Form loaded from master log — ${r['Task Number']}`);
+}
 
 async function openPreview(mode) {
   const todayPEsCheck = await loadPERecordsToday();
