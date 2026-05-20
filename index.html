@@ -2837,7 +2837,9 @@ async function downloadWorkbook(wb, filename) {
 let _previewMode    = ''; // 'midday' | 'wrapup' | 'masterlog'
 let _previewPECache = []; // today's P&E records cached at preview open time
 
-let _masterLogCache = []; // records stored for search/filter
+let _masterLogCache      = []; // records stored for search/filter/sort
+let _masterLogSortDir    = 'desc'; // 'asc' | 'desc' — newest first by default
+let _masterLogDateFilter = '';     // '' = all dates
 
 async function openMasterLogPreview() {
   const log    = await loadMasterLog();
@@ -2867,12 +2869,30 @@ async function openMasterLogPreview() {
     peSection.style.display = 'none';
   }
 
+  // Reset sort/filter state on open
+  _masterLogSortDir    = 'desc';
+  _masterLogDateFilter = '';
+
+  // Build unique sorted date list for the filter dropdown
+  const uniqueDates = [...new Set(log.map(r => r['Log Date']).filter(Boolean))]
+    .sort((a, b) => new Date(b) - new Date(a)); // newest first in dropdown
+
+  const dateOptions = uniqueDates.map(d =>
+    `<option value="${d}">${d}</option>`).join('');
+
   document.getElementById('previewTitle').textContent = 'Master Log';
   document.getElementById('previewSubtitle').innerHTML =
     `<span>${log.length} task record${log.length !== 1 ? 's' : ''}${allPEs.length ? ` · ${allPEs.length} P&amp;E record${allPEs.length !== 1 ? 's' : ''}` : ''}</span>
-     <input id="masterLogSearch" type="text" placeholder="Search by task number or description…"
-       oninput="filterMasterLog(this.value)"
-       style="margin-top:6px;display:block;width:100%;padding:6px 10px;background:var(--surface2);color:var(--text);border:0.5px solid var(--border-med);border-radius:8px;font-family:inherit;font-size:12px;box-sizing:border-box;">`;
+     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+       <input id="masterLogSearch" type="text" placeholder="Search task number or description…"
+         oninput="applyMasterLogFilters()"
+         style="flex:1;min-width:160px;padding:6px 10px;background:var(--surface2);color:var(--text);border:0.5px solid var(--border-med);border-radius:8px;font-family:inherit;font-size:12px;">
+       <select id="masterLogDateFilter" onchange="applyMasterLogFilters()"
+         style="padding:6px 8px;background:var(--surface2);color:var(--text);border:0.5px solid var(--border-med);border-radius:8px;font-family:inherit;font-size:12px;cursor:pointer;">
+         <option value="">All dates</option>
+         ${dateOptions}
+       </select>
+     </div>`;
   document.getElementById('previewDownloadBtn').style.display = 'none';
   document.getElementById('previewOverlay').classList.add('active');
   setTimeout(() => document.getElementById('masterLogSearch')?.focus(), 50);
@@ -2884,8 +2904,18 @@ function renderMasterLogTable(data) {
   const statusClassMap = { 'Completed':'preview-status-completed', 'Sent Back':'preview-status-sentback',
                             'Paused':'preview-status-paused', 'Non-Task':'preview-status-nontask' };
 
-  const thead = `<thead><tr><th style="white-space:nowrap;"></th>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead>`;
-  const tbody = `<tbody>${data.map((r, i) => {
+  const sortArrow = _masterLogSortDir === 'asc' ? ' ▲' : ' ▼';
+  const headerCells = cols.map(c => {
+    if (c === 'Log Date') {
+      return `<th style="cursor:pointer;white-space:nowrap;user-select:none;" onclick="toggleMasterLogSort()" title="Click to toggle sort order">
+        ${c}${sortArrow}
+      </th>`;
+    }
+    return `<th>${c}</th>`;
+  }).join('');
+  const thead = `<thead><tr><th style="white-space:nowrap;"></th>${headerCells}</tr></thead>`;
+
+  const tbody = `<tbody>${data.map(r => {
     const globalIdx = _masterLogCache.indexOf(r);
     const cells = cols.map(c => {
       const val = r[c] ?? '—';
@@ -2903,14 +2933,30 @@ function renderMasterLogTable(data) {
   document.getElementById('previewTable').innerHTML = thead + tbody;
 }
 
-function filterMasterLog(query) {
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? _masterLogCache.filter(r =>
-        (r['Task Number']      || '').toLowerCase().includes(q) ||
-        (r['Task Description'] || '').toLowerCase().includes(q))
-    : _masterLogCache;
-  renderMasterLogTable(filtered);
+function applyMasterLogFilters() {
+  const q    = (document.getElementById('masterLogSearch')?.value   || '').trim().toLowerCase();
+  const date = (document.getElementById('masterLogDateFilter')?.value || '');
+  _masterLogDateFilter = date;
+
+  let data = _masterLogCache;
+  if (date) data = data.filter(r => r['Log Date'] === date);
+  if (q)    data = data.filter(r =>
+    (r['Task Number']      || '').toLowerCase().includes(q) ||
+    (r['Task Description'] || '').toLowerCase().includes(q));
+
+  // Apply sort (view only — _masterLogCache is never mutated)
+  data = [...data].sort((a, b) => {
+    const da = new Date(a['Log Date'] || 0);
+    const db = new Date(b['Log Date'] || 0);
+    return _masterLogSortDir === 'asc' ? da - db : db - da;
+  });
+
+  renderMasterLogTable(data);
+}
+
+function toggleMasterLogSort() {
+  _masterLogSortDir = _masterLogSortDir === 'desc' ? 'asc' : 'desc';
+  applyMasterLogFilters();
 }
 
 function loadMasterRecordToForm(idx) {
