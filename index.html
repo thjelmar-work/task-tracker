@@ -3273,7 +3273,7 @@ async function downloadMasterLog() {
   const log    = await loadMasterLog();
   const allPEs = await loadPERecords();
   if (!log.length && !allPEs.length) { showToast('No master log records yet. Wrap up a day first.'); return; }
-  const wb = await buildWorkbook(log.length ? log : [], true, allPEs);
+  const wb = await buildWorkbook(log.length ? log : [], true, []);
   addPESheetToWorkbook(wb, allPEs);
   const date = new Date().toISOString().slice(0, 10);
   await downloadWorkbook(wb, `task-log-master-${date}.xlsx`);
