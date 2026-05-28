@@ -2274,6 +2274,14 @@ function setModuleVer(modName, ver, event) {
   saveFormState();
 }
 
+// Prevent / restore tab-focus on remaining-time elements when the field is locked
+function setRemainingTimeLocked(locked) {
+  const qual = document.getElementById('timeRemainingQual');
+  const val  = document.getElementById('timeRemaining');
+  if (locked) { qual.tabIndex = -1; val.tabIndex = -1; }
+  else        { qual.removeAttribute('tabindex'); val.removeAttribute('tabindex'); }
+}
+
 function setStatus(s) {
   selectedStatus = s;
   ['completed','sentback','paused'].forEach(k =>
@@ -2287,8 +2295,9 @@ function setStatus(s) {
     remField.classList.add('form-locked');
     document.getElementById('timeRemaining').value     = '';
     document.getElementById('timeRemainingQual').value = '';
+    setRemainingTimeLocked(true);
   } else {
-    if (!nonTaskMode) remField.classList.remove('form-locked');
+    if (!nonTaskMode) { remField.classList.remove('form-locked'); setRemainingTimeLocked(false); }
   }
   saveFormState();
 }
@@ -2600,6 +2609,7 @@ function clearForm() {
     document.getElementById('btn-'+k).className = 'status-btn'
   );
   document.getElementById('timeRemainingField').classList.remove('form-locked');
+  setRemainingTimeLocked(false);
   selectedEnvs = [];
   ['vetting','alpha','beta','release'].forEach(k =>
     document.getElementById('btn-'+k).className = 'status-btn'
@@ -3517,6 +3527,7 @@ function activateNonTaskMode() {
   document.getElementById('mainCard').classList.add('nontask-active');
   document.getElementById('taskFormFields').classList.add('form-locked');
   document.getElementById('timeRemainingField').classList.add('form-locked');
+  setRemainingTimeLocked(true);
   document.getElementById('nontaskTriggerBtn').style.display = 'none';
   document.getElementById('peTriggerBtn').style.display      = 'none';
   document.getElementById('nontaskType').style.display       = '';
@@ -3535,6 +3546,7 @@ function deactivateNonTaskMode() {
   document.getElementById('mainCard').classList.remove('nontask-active');
   document.getElementById('taskFormFields').classList.remove('form-locked');
   document.getElementById('timeRemainingField').classList.remove('form-locked');
+  setRemainingTimeLocked(false);
   document.getElementById('nontaskTriggerBtn').style.display = '';
   document.getElementById('peTriggerBtn').style.display      = '';
   document.getElementById('nontaskType').style.display       = 'none';
