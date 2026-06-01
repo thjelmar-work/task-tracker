@@ -749,6 +749,30 @@
     box-shadow: 0 2px 12px rgba(0,0,0,0.1);
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  /* Undo-capable toast — allows button clicks */
+  .toast.undo-active {
+    pointer-events: auto;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    white-space: normal;
+    max-width: 340px;
+    text-align: left;
+  }
+  .toast-undo-btn {
+    flex-shrink: 0;
+    padding: 4px 12px;
+    border-radius: 6px;
+    border: 1.5px solid var(--accent, #4a7c59);
+    background: transparent;
+    color: var(--accent, #4a7c59);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .toast-undo-btn:hover { background: var(--accent, #4a7c59); color: #fff; }
 
   /* Preview modal */
   .preview-overlay {
@@ -1085,7 +1109,7 @@
 <div class="overlay" id="overlay">
   <div class="modal">
     <h2>Reset all data?</h2>
-    <p>This will clear all saved records and cannot be undone.</p>
+    <p>This will clear all saved records. You'll have 20 seconds to undo if needed.</p>
     <div class="modal-btns">
       <button class="modal-yes" onclick="doReset()">Yes, reset</button>
       <button class="modal-no"  onclick="closeModal()">Cancel</button>
@@ -2627,6 +2651,10 @@ function clearForm() {
 
 // Shared reset logic — clears records, form, sidebar, and today's P&E entries
 async function resetDay() {
+  // Snapshot everything before wiping so the undo window can restore it
+  const recordsSnap = records.map(r => ({ ...r }));
+  const peSnap      = peTodayRecords.map(r => ({ ...r }));
+
   records = [];
   clearStorage();
   clearForm();
@@ -2634,6 +2662,12 @@ async function resetDay() {
   updateCount();
   updateSidebar();
   updateMasterLogCount();
+
+  // Only offer undo if there was actually something to lose
+  if (recordsSnap.length || peSnap.length) {
+    _undoSnapshot = { records: recordsSnap, peRecords: peSnap };
+    showUndoToast(recordsSnap.length, peSnap.length);
+  }
 }
 
 // ── Excel export ─────────────────────────────────────────────────────
@@ -3691,17 +3725,98 @@ function doResume() {
 }
 
 async function doReset() {
-  await resetDay();
   closeModal();
-  showToast('All data cleared.');
+  await resetDay(); // resetDay now shows the undo toast if there was data
 }
 
 function showToast(msg, duration = 2800) {
+  cancelUndoToast(); // clear any active undo countdown first
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.classList.remove('show'), duration);
+}
+
+// ── Undo reset ────────────────────────────────────────────────────────
+let _undoSnapshot = null; // { records: [...], peRecords: [...] }
+let _undoTimer    = null;
+const UNDO_SECONDS = 20;
+
+function cancelUndoToast() {
+  const t = document.getElementById('toast');
+  clearInterval(t._undoInterval);
+  clearTimeout(_undoTimer);
+  t.classList.remove('show', 'undo-active');
+  t.innerHTML = '';
+  _undoSnapshot = null;
+  _undoTimer    = null;
+}
+
+function showUndoToast(taskCount, peCount) {
+  const t = document.getElementById('toast');
+  cancelUndoToast(); // reset any previous state cleanly
+  _undoSnapshot = _undoSnapshot; // already set by caller
+
+  let secs = UNDO_SECONDS;
+  const label = `${taskCount} task${taskCount !== 1 ? 's' : ''}${peCount ? ` + ${peCount} P&E${peCount !== 1 ? 's' : ''}` : ''} cleared.`;
+
+  const render = () => {
+    t.innerHTML = `<span>${label}</span><button class="toast-undo-btn" onclick="undoReset()">Undo (${secs}s)</button>`;
+  };
+
+  t.classList.add('show', 'undo-active');
+  render();
+
+  t._undoInterval = setInterval(() => {
+    secs--;
+    if (secs <= 0) {
+      clearInterval(t._undoInterval);
+      _undoSnapshot = null;
+      t.classList.remove('show', 'undo-active');
+      t.innerHTML = '';
+    } else {
+      render();
+    }
+  }, 1000);
+
+  _undoTimer = setTimeout(() => {
+    clearInterval(t._undoInterval);
+    _undoSnapshot = null;
+    t.classList.remove('show', 'undo-active');
+    t.innerHTML = '';
+  }, UNDO_SECONDS * 1000);
+}
+
+async function undoReset() {
+  if (!_undoSnapshot) return;
+  const { records: savedRecords, peRecords: savedPEs } = _undoSnapshot;
+  _undoSnapshot = null;
+  cancelUndoToast();
+
+  // Restore task records to localStorage
+  records = savedRecords;
+  saveToStorage();
+
+  // Restore P&E records to IndexedDB
+  if (savedPEs.length) {
+    try {
+      const db    = await openPEDB();
+      const tx    = db.transaction('records', 'readwrite');
+      const store = tx.objectStore('records');
+      savedPEs.forEach(r => store.put(r));
+      await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = e => rej(e.target.error); });
+    } catch(_) {}
+    peTodayRecords = savedPEs;
+    updatePELogCount();
+  }
+
+  updateCount();
+  updateSidebar();
+  updateMasterLogCount();
+
+  const tot = savedRecords.length + savedPEs.length;
+  showToast(`Restored ${savedRecords.length} task${savedRecords.length !== 1 ? 's' : ''}${savedPEs.length ? ` + ${savedPEs.length} P&E${savedPEs.length !== 1 ? 's' : ''}` : ''}.`);
 }
 
 // ── Init ─────────────────────────────────────────────────────────────
