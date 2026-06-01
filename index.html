@@ -2298,12 +2298,14 @@ function setModuleVer(modName, ver, event) {
   saveFormState();
 }
 
-// Prevent / restore tab-focus on remaining-time elements when the field is locked
-function setRemainingTimeLocked(locked) {
-  const qual = document.getElementById('timeRemainingQual');
-  const val  = document.getElementById('timeRemaining');
-  if (locked) { qual.tabIndex = -1; val.tabIndex = -1; }
-  else        { qual.removeAttribute('tabindex'); val.removeAttribute('tabindex'); }
+// Remove all locked form elements from the tab order so keyboard nav skips them.
+// Works on any container: taskFormFields, timeRemainingField, etc.
+function setContainerTabLocked(el, locked) {
+  if (!el) return;
+  el.querySelectorAll('input, select, textarea, button').forEach(child => {
+    if (locked) { child.tabIndex = -1; }
+    else        { child.removeAttribute('tabindex'); }
+  });
 }
 
 function setStatus(s) {
@@ -2319,9 +2321,9 @@ function setStatus(s) {
     remField.classList.add('form-locked');
     document.getElementById('timeRemaining').value     = '';
     document.getElementById('timeRemainingQual').value = '';
-    setRemainingTimeLocked(true);
+    setContainerTabLocked(remField, true);
   } else {
-    if (!nonTaskMode) { remField.classList.remove('form-locked'); setRemainingTimeLocked(false); }
+    if (!nonTaskMode) { remField.classList.remove('form-locked'); setContainerTabLocked(remField, false); }
   }
   saveFormState();
 }
@@ -2633,7 +2635,7 @@ function clearForm() {
     document.getElementById('btn-'+k).className = 'status-btn'
   );
   document.getElementById('timeRemainingField').classList.remove('form-locked');
-  setRemainingTimeLocked(false);
+  setContainerTabLocked(document.getElementById('timeRemainingField'), false);
   selectedEnvs = [];
   ['vetting','alpha','beta','release'].forEach(k =>
     document.getElementById('btn-'+k).className = 'status-btn'
@@ -3561,7 +3563,8 @@ function activateNonTaskMode() {
   document.getElementById('mainCard').classList.add('nontask-active');
   document.getElementById('taskFormFields').classList.add('form-locked');
   document.getElementById('timeRemainingField').classList.add('form-locked');
-  setRemainingTimeLocked(true);
+  setContainerTabLocked(document.getElementById('taskFormFields'), true);
+  setContainerTabLocked(document.getElementById('timeRemainingField'), true);
   document.getElementById('nontaskTriggerBtn').style.display = 'none';
   document.getElementById('peTriggerBtn').style.display      = 'none';
   document.getElementById('nontaskType').style.display       = '';
@@ -3579,8 +3582,15 @@ function deactivateNonTaskMode() {
   nonTaskMode = false;
   document.getElementById('mainCard').classList.remove('nontask-active');
   document.getElementById('taskFormFields').classList.remove('form-locked');
-  document.getElementById('timeRemainingField').classList.remove('form-locked');
-  setRemainingTimeLocked(false);
+  setContainerTabLocked(document.getElementById('taskFormFields'), false);
+  const remFieldNT = document.getElementById('timeRemainingField');
+  // Keep remaining time locked if status is still Completed; otherwise restore it
+  if (selectedStatus === 'Completed') {
+    // visual lock stays; tab lock stays — no change needed
+  } else {
+    remFieldNT.classList.remove('form-locked');
+    setContainerTabLocked(remFieldNT, false);
+  }
   document.getElementById('nontaskTriggerBtn').style.display = '';
   document.getElementById('peTriggerBtn').style.display      = '';
   document.getElementById('nontaskType').style.display       = 'none';
