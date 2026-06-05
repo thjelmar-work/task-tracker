@@ -1944,9 +1944,38 @@ function getPrefix(val) {
 
 // ── Module list resolver ─────────────────────────────────────────────
 function getModulesForPrefix(prefix) {
-  if (prefix === 'dyn') return getDynModules();
+  if (prefix === 'dyn')  return getDynModules();
   if (prefix === 'ent')  return [...ENT_BASE, ...getDynModules()];
+  if (prefix === 'post') return getPostModules();
   return MODULE_MAP[prefix];
+}
+
+// ── POST module list ──────────────────────────────────────────────────
+// Single DB: module list changes by env+DB
+//   Alpha / Release / Vetting + SQL → PD/PT, PAM
+//   Alpha / Release / Vetting + ORA → PD/PT, FT
+//   Beta + SQL                      → PD/PT, FT
+//   Beta + ORA                      → PD/PT, PAM
+// Both DBs: show all three; PAM auto-colors to primary DB, FT to opposite
+//   (reuses DYN_PRIMARY_MODS / DYN_COND_MODS coloring in renderModulePills)
+function getPostModules() {
+  const env     = selectedEnvs[0];
+  const bothDbs = selectedDbs.length === 2;
+  const sqlOnly = selectedDbs.length === 1 && selectedDbs.includes('SQL');
+  const oraOnly = selectedDbs.length === 1 && selectedDbs.includes('ORA');
+
+  if (bothDbs) return ['PD/PT', 'PAM', 'FT'];
+
+  if (env === 'Beta') {
+    if (sqlOnly) return ['PD/PT', 'FT'];
+    if (oraOnly) return ['PD/PT', 'PAM'];
+  } else {
+    // Alpha, Release, Vetting (and no-env fallback)
+    if (sqlOnly) return ['PD/PT', 'PAM'];
+    if (oraOnly) return ['PD/PT', 'FT'];
+  }
+
+  return ['PD/PT', 'PAM']; // no DB selected yet
 }
 
 // ── DYN module list ───────────────────────────────────────────────────
