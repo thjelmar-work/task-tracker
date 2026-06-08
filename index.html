@@ -2111,22 +2111,8 @@ function activateEditMode(idx) {
     document.getElementById('timeRemaining').value     = '';
   }
 
-  // Modules
-  moduleEnvs = {};
-  const modRaw = r['Modules Tested'] || '';
-  if (modRaw && modRaw !== '—') {
-    const sqlPart = (modRaw.match(/SQL:\s*([^|]+)/i) || [])[1];
-    const oraPart = (modRaw.match(/ORA:\s*([^|]+)/i) || [])[1];
-    if (sqlPart || oraPart) {
-      (sqlPart || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => moduleEnvs[m] = 'sql');
-      (oraPart || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => {
-        moduleEnvs[m] = moduleEnvs[m] === 'sql' ? 'both' : 'ora';
-      });
-    } else {
-      modRaw.replace(/\b\d+U?\s*:\s*/gi, '').split(/[|,]/).map(s => s.trim()).filter(Boolean)
-        .forEach(m => { moduleEnvs[m] = 'both'; });
-    }
-  }
+  // Modules — restore all DB and version assignments
+  restoreModulesFromRecord(r['Modules Tested'] || '');
 
   // Switch save button + show banner
   const saveBtn = document.getElementById('btn-save-entry');
@@ -2388,6 +2374,49 @@ function validateTimeField(fieldId) {
   if (!isValidTimeInput(el.value.trim())) {
     showToast('Invalid format. Enter time as — e.g. 1hr 30min, 2hrs, or 45mins');
   }
+}
+
+// Restore moduleEnvs + moduleVers from any stored "Modules Tested" string.
+// Handles all four stored formats:
+//   plain:        "QAE, QAS, EM"
+//   sql/ora:      "SQL: QAE, PAM | ORA: QAS, EM"          → restores moduleEnvs
+//   vers:         "15: QAE, QAS | 15U: PAM, EM"           → restores moduleEnvs + moduleVers
+//   combined:     "SQL: A | ORA: B | 15: X | 15U: Y"      → restores moduleEnvs (verRow hidden for bothDbs)
+function restoreModulesFromRecord(modRaw) {
+  moduleEnvs = {};
+  moduleVers = {};
+  if (!modRaw || modRaw === '—') return;
+
+  const sqlPart = (modRaw.match(/SQL:\s*([^|]+)/i) || [])[1];
+  const oraPart = (modRaw.match(/ORA:\s*([^|]+)/i) || [])[1];
+  if (sqlPart || oraPart) {
+    // SQL/ORA attributed — restore DB assignment; moduleVers irrelevant (verRow hidden when bothDbs)
+    (sqlPart || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => { moduleEnvs[m] = 'sql'; });
+    (oraPart || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => {
+      moduleEnvs[m] = moduleEnvs[m] === 'sql' ? 'both' : 'ora';
+    });
+    return;
+  }
+
+  // Check for version-attributed format: "15: A, B | 15U: C, D"
+  // \b15\s*: matches "15:" but NOT "15U:" (no word boundary before U)
+  const vp15  = (modRaw.match(/\b15\s*:\s*([^|]+)/i)  || [])[1];
+  const vp15u = (modRaw.match(/\b15U\s*:\s*([^|]+)/i) || [])[1];
+  if (vp15 || vp15u) {
+    (vp15  || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => {
+      moduleEnvs[m] = 'both';
+      moduleVers[m] = moduleVers[m] === '15u' ? 'both' : '15';
+    });
+    (vp15u || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => {
+      moduleEnvs[m] = 'both';
+      moduleVers[m] = moduleVers[m] === '15' ? 'both' : '15u';
+    });
+    return;
+  }
+
+  // Plain format "A, B, C" — no DB or version breakdown
+  modRaw.replace(/\b\d+U?\s*:\s*/gi, '').split(/[|,]/).map(s => s.trim()).filter(Boolean)
+    .forEach(m => { moduleEnvs[m] = 'both'; });
 }
 
 function getCheckedModules() {
@@ -3092,20 +3121,8 @@ function loadMasterRecordToForm(idx) {
   // Notes (skip time fields — fresh session)
   document.getElementById('notes').value = r['Notes'] !== '—' ? (r['Notes'] || '') : '';
 
-  // Modules
-  moduleEnvs = {};
-  const modRaw = r['Modules Tested'] || '';
-  if (modRaw && modRaw !== '—') {
-    const sp = (modRaw.match(/SQL:\s*([^|]+)/i) || [])[1];
-    const op = (modRaw.match(/ORA:\s*([^|]+)/i) || [])[1];
-    if (sp || op) {
-      (sp || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => moduleEnvs[m] = 'sql');
-      (op || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => { moduleEnvs[m] = moduleEnvs[m] === 'sql' ? 'both' : 'ora'; });
-    } else {
-      modRaw.replace(/\b\d+U?\s*:\s*/gi, '').split(/[|,]/).map(s => s.trim()).filter(Boolean)
-        .forEach(m => { moduleEnvs[m] = 'both'; });
-    }
-  }
+  // Modules — restore all DB and version assignments
+  restoreModulesFromRecord(r['Modules Tested'] || '');
 
   renderVerEnvRow();
   updateModules();
@@ -3727,33 +3744,8 @@ function doResume() {
   // -- Notes --
   if (r['Notes']) document.getElementById('notes').value = r['Notes'];
 
-  // -- Modules: restore checked state from stored string --
-  // Possible formats:
-  //   plain:      "QAE, QAS, EM"
-  //   sql/ora:    "SQL: QAE, PAM | ORA: QAS, EM"
-  //   vers:       "15: QAE, QAS | 15U: PAM, EM"
-  //   combined:   "SQL: QAE | ORA: QAS | 15: X | 15U: Y"
-  moduleEnvs = {};
-  const modRaw = r['Modules Tested'] || '';
-  if (modRaw && modRaw !== '—') {
-    const sqlPart = (modRaw.match(/SQL:\s*([^|]+)/i) || [])[1];
-    const oraPart = (modRaw.match(/ORA:\s*([^|]+)/i) || [])[1];
-    if (sqlPart || oraPart) {
-      // SQL/ORA attributed — restore DB assignment
-      (sqlPart || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => moduleEnvs[m] = 'sql');
-      (oraPart || '').split(',').map(s => s.trim()).filter(Boolean).forEach(m => {
-        moduleEnvs[m] = moduleEnvs[m] === 'sql' ? 'both' : 'ora';
-      });
-    } else {
-      // 15/15U sections or plain — strip any "N:" / "NU:" prefixes then split by | and ,
-      modRaw
-        .replace(/\b\d+U?\s*:\s*/gi, '') // remove "15: ", "15U: " etc.
-        .split(/[|,]/)
-        .map(s => s.trim())
-        .filter(Boolean)
-        .forEach(m => { moduleEnvs[m] = 'both'; });
-    }
-  }
+  // -- Modules: restore all DB and version assignments --
+  restoreModulesFromRecord(r['Modules Tested'] || '');
 
   // Re-render everything
   renderVerEnvRow();
