@@ -575,6 +575,87 @@
 
   .no-modules { font-size: 13px; color: var(--text-hint); font-style: italic; }
 
+  /* ── Pass / Fail Assignment ──────────────────────────────────────── */
+  #passfailSection { margin-top: 10px; }
+
+  .passfail-header {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+
+  /* Unassigned drop zone */
+  .passfail-unassigned {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    min-height: 32px;
+    padding: 5px 8px;
+    margin-bottom: 8px;
+    border: 1.5px dashed var(--border-med);
+    border-radius: var(--radius);
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .passfail-unassigned.drag-over {
+    background: var(--surface2);
+    border-color: var(--blue-border);
+    border-style: solid;
+  }
+  .passfail-unassigned-label {
+    font-size: 11px;
+    color: var(--text-hint);
+    font-style: italic;
+    pointer-events: none;
+  }
+
+  /* Two-column Pass / Fail */
+  .passfail-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  .passfail-col {
+    min-height: 52px;
+    padding: 7px 8px;
+    border: 1.5px dashed var(--border-med);
+    border-radius: var(--radius);
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .passfail-col-pass { border-color: rgba(99,153,34,0.45); }
+  .passfail-col-fail { border-color: rgba(226,75,74,0.45); }
+  .passfail-col-pass.drag-over { background: var(--green-bg); border-color: var(--green-border); border-style: solid; }
+  .passfail-col-fail.drag-over { background: var(--red-bg);   border-color: var(--red-border);   border-style: solid; }
+
+  .passfail-col-header {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 5px;
+  }
+  .passfail-col-pass .passfail-col-header { color: var(--green-text); }
+  .passfail-col-fail .passfail-col-header { color: var(--red-text); }
+
+  .passfail-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+
+  .passfail-pill {
+    padding: 2px 9px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: grab;
+    border: 1px solid var(--border-med);
+    background: var(--surface);
+    color: var(--text);
+    user-select: none;
+    white-space: nowrap;
+  }
+  .passfail-pill:active { cursor: grabbing; opacity: 0.7; }
+  .passfail-pill-pass { background: var(--green-bg); border-color: var(--green-border); color: var(--green-text); }
+  .passfail-pill-fail { background: var(--red-bg);   border-color: var(--red-border);   color: var(--red-text); }
+  .passfail-placeholder { font-size: 11px; color: var(--text-hint); font-style: italic; }
+
   .status-row { display: flex; gap: 8px; }
 
   .status-btn {
@@ -971,6 +1052,7 @@
           <div class="checkboxes" id="moduleArea">
             <span class="no-modules">Enter a task number to see available modules</span>
           </div>
+          <div id="passfailSection" style="display:none;"></div>
         </div>
 
         <div class="field">
@@ -1247,6 +1329,8 @@ let sidebarFmt     = 'hm'; // 'hm' | 'dec'
 let moduleEnvs         = {}; // { moduleName: 'sql'|'ora'|'both' } — only used when both DBs selected
 let moduleVers         = {}; // { moduleName: '15'|'15u'|'both' } — only when both versions selected
 let verEnvs            = {}; // { '15': 'sql'|'ora'|'both', '15U': ... } — only when both DBs + both vers
+let moduleOutcomes     = {}; // { moduleName: 'pass'|'fail' } — pass/fail assignment for checked modules
+let _draggingOutcomeModule = null; // module name currently being dragged in the pass/fail section
 let editingIndex       = null;
 let editingShowStatus  = false;  // whether Yes was clicked on status question
 let editingNewStatus   = '';     // newly selected status (empty = keep original)
@@ -1508,7 +1592,8 @@ function saveFormState() {
       selectedVers,
       verEnvs,
       moduleEnvs,
-      moduleVers
+      moduleVers,
+      moduleOutcomes
     };
     localStorage.setItem(FORM_KEY, JSON.stringify(state));
   } catch(_) {}
@@ -1581,6 +1666,7 @@ function restoreFormState() {
       else if (s.checkedModules && s.checkedModules.length) {
         s.checkedModules.forEach(v => { moduleEnvs[v] = 'both'; });
       }
+      if (s.moduleOutcomes) moduleOutcomes = s.moduleOutcomes;
       renderModulePills();
     }
   } catch(_) {}
@@ -2113,6 +2199,7 @@ function activateEditMode(idx) {
 
   // Modules — restore all DB and version assignments
   restoreModulesFromRecord(r['Modules Tested'] || '');
+  moduleOutcomes = r.moduleOutcomes ? { ...r.moduleOutcomes } : {};
 
   // Switch save button + show banner
   const saveBtn = document.getElementById('btn-save-entry');
@@ -2195,10 +2282,11 @@ function updateModules() {
 
 function renderModulePills() {
   const prefix = getPrefix(document.getElementById('taskNum').value);
-  if (!prefix) return;
+  if (!prefix) { renderPassFail(); return; }
   if (!selectedDbs.length) {
     document.getElementById('moduleArea').innerHTML =
       '<span class="no-modules">Select SQL or ORA to see available modules</span>';
+    renderPassFail();
     return;
   }
   const bothDbs = selectedDbs.length === 2;
@@ -2280,11 +2368,13 @@ function renderModulePills() {
           <div class="ent-group-pills">${grouped[g].map(buildPill).join('')}</div>
         </div>`).join('')
     }</div>`;
+    renderPassFail();
     return;
   }
 
   // All other prefixes: flat layout
   area.innerHTML = modules.map(buildPill).join('');
+  renderPassFail();
 }
 
 function togglePill(el) {
@@ -2294,7 +2384,7 @@ function togglePill(el) {
   el.classList.toggle('checked', cb.checked);
   const modName = cb.value;
   if (cb.checked) { if (!moduleEnvs[modName]) moduleEnvs[modName] = 'both'; }
-  else            { delete moduleEnvs[modName]; delete moduleVers[modName]; }
+  else            { delete moduleEnvs[modName]; delete moduleVers[modName]; delete moduleOutcomes[modName]; }
   renderModulePills();
   saveFormState();
 }
@@ -2310,6 +2400,88 @@ function setModuleVer(modName, ver, event) {
   event.stopPropagation();
   moduleVers[modName] = ver;
   renderModulePills();
+  saveFormState();
+}
+
+// ── Pass / Fail Assignment ────────────────────────────────────────────
+function renderPassFail() {
+  const section = document.getElementById('passfailSection');
+  if (!section) return;
+
+  const checkedMods = Object.keys(moduleEnvs);
+  if (!checkedMods.length) {
+    section.style.display = 'none';
+    return;
+  }
+
+  // Prune outcomes for modules that are no longer checked
+  Object.keys(moduleOutcomes).forEach(m => {
+    if (!moduleEnvs[m]) delete moduleOutcomes[m];
+  });
+
+  const passMods   = checkedMods.filter(m => moduleOutcomes[m] === 'pass');
+  const failMods   = checkedMods.filter(m => moduleOutcomes[m] === 'fail');
+  const unassigned = checkedMods.filter(m => !moduleOutcomes[m]);
+
+  const buildDraggable = (m, extraCls) =>
+    `<div class="passfail-pill${extraCls}" draggable="true"
+          ondragstart="startOutcomeDrag(event,'${m}')"
+          title="Drag to Pass or Fail">${m}</div>`;
+
+  section.style.display = '';
+  section.innerHTML = `
+    <div class="passfail-header">Pass / Fail</div>
+    <div class="passfail-unassigned"
+         ondragover="event.preventDefault();this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="dropToOutcome(event,null)">
+      ${unassigned.map(m => buildDraggable(m, '')).join('')}
+      ${!unassigned.length
+        ? '<span class="passfail-unassigned-label">All assigned — drag here to unassign</span>'
+        : ''}
+    </div>
+    <div class="passfail-cols">
+      <div class="passfail-col passfail-col-pass"
+           ondragover="event.preventDefault();this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="dropToOutcome(event,'pass')">
+        <div class="passfail-col-header">✓ Pass</div>
+        <div class="passfail-pills">
+          ${passMods.map(m => buildDraggable(m, ' passfail-pill-pass')).join('')}
+          ${!passMods.length ? '<span class="passfail-placeholder">Drop here</span>' : ''}
+        </div>
+      </div>
+      <div class="passfail-col passfail-col-fail"
+           ondragover="event.preventDefault();this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="dropToOutcome(event,'fail')">
+        <div class="passfail-col-header">✗ Fail</div>
+        <div class="passfail-pills">
+          ${failMods.map(m => buildDraggable(m, ' passfail-pill-fail')).join('')}
+          ${!failMods.length ? '<span class="passfail-placeholder">Drop here</span>' : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+function startOutcomeDrag(event, modName) {
+  _draggingOutcomeModule = modName;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', modName);
+}
+
+function dropToOutcome(event, outcome) {
+  event.preventDefault();
+  event.currentTarget.classList.remove('drag-over');
+  const mod = _draggingOutcomeModule;
+  _draggingOutcomeModule = null;
+  if (!mod) return;
+  if (outcome === null) {
+    delete moduleOutcomes[mod];
+  } else {
+    moduleOutcomes[mod] = outcome;
+  }
+  renderPassFail();
   saveFormState();
 }
 
@@ -2482,7 +2654,8 @@ function submitEntry() {
         return sym ? `${sym} ${val}` : val;
       })(),
       'Status': selectedStatus,
-      'Notes':  document.getElementById('notes').value.trim()
+      'Notes':  document.getElementById('notes').value.trim(),
+      moduleOutcomes: { ...moduleOutcomes }
     };
     _editPendingValues = newRecord;
 
@@ -2650,7 +2823,8 @@ function submitEntry() {
         return sym ? `${sym} ${val}` : val;
       })(),
     'Status':               selectedStatus,
-    'Notes':                document.getElementById('notes').value.trim()
+    'Notes':                document.getElementById('notes').value.trim(),
+    moduleOutcomes:         { ...moduleOutcomes }
   });
 
   saveToStorage();
@@ -2702,10 +2876,13 @@ function clearForm() {
   ['sql','ora'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
   moduleEnvs = {};
   moduleVers = {};
+  moduleOutcomes = {};
   selectedVers = [];
   verEnvs = {};
   ['15','15u'].forEach(k => document.getElementById('btn-'+k).className = 'status-btn');
   renderVerEnvRow();
+  const _pfSection = document.getElementById('passfailSection');
+  if (_pfSection) _pfSection.style.display = 'none';
   clearFormStorage();
 }
 
@@ -3123,6 +3300,7 @@ function loadMasterRecordToForm(idx) {
 
   // Modules — restore all DB and version assignments
   restoreModulesFromRecord(r['Modules Tested'] || '');
+  moduleOutcomes = r.moduleOutcomes ? { ...r.moduleOutcomes } : {};
 
   renderVerEnvRow();
   updateModules();
@@ -3615,6 +3793,8 @@ function activateNonTaskMode() {
   document.getElementById('peTriggerBtn').style.display      = 'none';
   document.getElementById('nontaskType').style.display       = '';
   document.getElementById('nontaskCancelBtn').style.display  = '';
+  const _pfSection = document.getElementById('passfailSection');
+  if (_pfSection) _pfSection.style.display = 'none';
 }
 
 function onNontaskTypeChange() {
@@ -3644,6 +3824,7 @@ function deactivateNonTaskMode() {
   document.getElementById('nontaskOtherInput').style.display = 'none';
   document.getElementById('nontaskOtherInput').value         = '';
   document.getElementById('nontaskCancelBtn').style.display  = 'none';
+  renderPassFail(); // restore pass/fail section if modules are checked
 }
 
 // ── Resume paused task ───────────────────────────────────────────────
@@ -3746,6 +3927,7 @@ function doResume() {
 
   // -- Modules: restore all DB and version assignments --
   restoreModulesFromRecord(r['Modules Tested'] || '');
+  moduleOutcomes = r.moduleOutcomes ? { ...r.moduleOutcomes } : {};
 
   // Re-render everything
   renderVerEnvRow();
